@@ -13,56 +13,15 @@ logger = logging.getLogger(__name__)
 # TODO: Re-Implement this class using OCSM
 class InteroperabilitySchema:
 
-    context_schema = {
-          '@context': {
-              '@base': 'http://localhost:5000/api/weatherForecast/weatherForecast5_3/',
-              'farmtopia': 'http://localhost:5000/demo/farmtopia.rdf#',
-              'sosa': 'http://www.w3.org/ns/sosa/',
-              'weather': 'https://bimerr.iot.linkeddata.es/def/weather/#',
-              'collections': {
-                '@id': 'sosa:hasMember',
-                '@type': '@id',
-                '@container': '@set',
-              },
-              'items': {
-                '@id': 'sosa:hasMember',
-                '@type': '@id',
-                '@container': '@set',
-              },
-              'spatialEntity': {
-                '@id': 'sosa:hasFeatureOfInterest',
-                '@type': '@id',
-              },
-              'data_specification': {
-                '@id': 'sosa:observedProperty',
-                '@type': '@id',
-              },
-              'unit': {
-                '@id': 'farmtopia:unitOfMeasure',
-                '@type': '@id',
-              },
-              'property': {
-                '@id': 'sosa:observedProperty',
-                '@type': '@id',
-              },
-              'timestamp': 'sosa:phenomenonTime',
-              'value': 'sosa:hasSimpleResult',
-              'Temperature': 'weather:temp',
-              'Celsius': 'unit:DEG_C',
-              'RelativeHumidity': 'weather:RelativeHumidity',
-              'Percent': 'unit:PERCENT',
-              'WindSpeed': 'weather:WindSpeed',
-              'MeterPerSecond': 'unit:M-PER-SEC',
-              'WindDirection': 'weather:WindDirection',
-              'Degree': 'unit:DEG',
-              'Precipitation': 'weather:rain',
-              'Millimetre': 'unit:MilliM',
-              'Pressure': 'weather:AtmospheriStatisonPressure',
-              'Hectopascal': 'unit:HectoPA',
-              'Radiation': 'weather:DirectNormalRadiation',
-              'WattPerMetre2': 'unit:MicroW-PER-M2',
-          }
-    }
+    context_schema = [
+              "https://w3id.org/ocsm/main-context.jsonld",
+              {
+                  "qudt": "http://qudt.org/vocab/unit/",
+                  "cf" : "https://vocab.nerc.ac.uk/standard_name/"
+              }
+          ]
+
+    graph_schema = []
 
     item_schema = {
         '@id': '', # "prediction/1",
@@ -84,8 +43,7 @@ class InteroperabilitySchema:
 
     schema = {
         '@context': context_schema,
-        '@id': '',
-        'collections': []
+        '@graph': []
     }
 
     property_schema = { # TODO add these to data_specifications objects on defaults.json
