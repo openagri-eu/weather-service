@@ -1,11 +1,10 @@
 import logging
 from typing import List
-import uuid
+from collections import defaultdict
 
 from src import utils
 from src.models.point import Point
 from src.models.prediction import Prediction
-from src.utils import deepcopy_dict
 
 
 logger = logging.getLogger(__name__)
@@ -24,21 +23,31 @@ class InteroperabilitySchema:
     graph_schema = []
 
     item_schema = {
-        '@id': '', # "prediction/1",
-        # "@type": "prediction",
-        '@type': 'farmtopia:Prediction',
-        'timestamp': '', # "2024-25-01T06:01:00",
-        'value': '', # 91.67
-    }
+            "@id": "urn:openagri:weather:forecast:temp:72d9fb43-53f8-4ec8-a33c-fa931360259a",
+            "@type": "Observation",
+            "observedProperty": "cf:air_temperature",
+            "hasResult": {
+                "@id": "",
+                "@type": "Result",
+                "numericValue": 22.53,
+                "unit": "qudt:DEG_C"
+            }
+        }
 
     collection_schema = {
-        '@id': '', # "_:collection_1",
-        # "@type": "predictionCollection",
-        '@type': 'farmtopia:PredictionCollection',
-        'spatialEntity': '', # "POIorROI_ID",
-        'measurement': '', # "Temperature",
-        'unit': '', # "Celsius",
-        'items': []
+        '@id': "",
+        '@type': ["ObservationCollection","WeatherForecast"],
+        "description": "5-day weather forecast on 2024-10-01T12:00:00+00:00",
+        "hasFeatureOfInterest": {
+            "@id": "",
+            "@type": ["FeatureOfInterest"],
+            "long" : 39.1436719643054,
+            "lat": 27.40518186700786
+        },
+        "source": "openweathermaps",
+        "resultTime": "2024-10-01T12:00:00+00:00",
+        "phenomenonTime": "2024-10-01T12:00:00+00:00",
+        "hasMember": []
     }
 
     schema = {
@@ -49,7 +58,7 @@ class InteroperabilitySchema:
     property_schema = { # TODO add these to data_specifications objects on defaults.json
         'ambient_temperature': {
           'measurement': 'Temperature',
-          'unit': 'Celsius',
+          'unit': 'qudt:DEG_C',
         },
         'ambient_humidity': {
           'measurement': 'RelativeHumidity',
@@ -69,39 +78,42 @@ class InteroperabilitySchema:
         },
     }
 
+
     @classmethod
-    def serialize(cls, predictions: List[Prediction], spatial_entity: Point) -> dict:
-        collection_schema = cls.collection_schema
-        item_schema = cls.item_schema
+    def predictions_to_jsonld(cls, predictions: List[Prediction], spatial_entity: Point) -> dict:
         property_schema = cls.property_schema
-
         semantic_data = utils.deepcopy_dict(cls.schema)
-        spatial_entity = str(spatial_entity.id)
-        collection_idx = 0
-        serialized_collections = {}
+
+        tmpst_buckets = defaultdict(list)
+        for pred in predictions:
+            tmpst_buckets[pred.timestamp].append(pred)
+
         try:
-            for pred in predictions:
-                collection_key = property_schema[pred.measurement_type]['measurement']
-                item = deepcopy_dict(item_schema)
-                item['@id'] = str(pred.id)
-                item['timestamp'] = str(pred.timestamp)
-                item['value'] = pred.value
-                if collection_key in serialized_collections:
-                    serialized_collections[collection_key]['items'].append(item)
-                    continue
+            for timestamp, preds in tmpst_buckets.items():
+                collection_schema = utils.deepcopy_dict(cls.collection_schema)
+                collection_schema["@id"] = utils.generate_uuid("weather:forecast")
+                collection_schema["resultTime"] = timestamp
+                collection_schema["phenomenonTime"] = timestamp
+                collection_schema["hasFeatureOfInterest"]["@id"] = utils.generate_uuid("weather:forecast:foi")
+                collection_schema["hasFeatureOfInterest"]["@type"].append(spatial_entity.type)
+                collection_schema["hasFeatureOfInterest"]["lat"] = spatial_entity.location.coordinates[0]
+                collection_schema["hasFeatureOfInterest"]["long"] = spatial_entity.location.coordinates[1]
 
-                collection = utils.deepcopy_dict(collection_schema)
-                collection['@id'] = f'_:collection_{collection_idx}'
-                collection_idx += 1
-                collection['spatialEntity'] = spatial_entity
-                collection['measurement'] = collection_key
-                collection['unit'] = property_schema[pred.measurement_type]['unit']
-                collection['items'].append(item)
-                serialized_collections[collection_key] = collection
+                for p in preds:
+                    item_prefix = f"weather:forecast:{property_schema[p.measurement_type]["measurement"].lower()}"
+                    item_schema = utils.deepcopy_dict(cls.item_schema)
+                    item_schema["@id"] = utils.generate_uuid(item_prefix)
+                    item_schema["observedProperty"] = f"cf:{p.measurement_type}"
+                    item_schema["hasResult"] = {
+                        "@id": utils.generate_uuid(f"{item_prefix}:result"),
+                        "@type": "Result",
+                        "numericValue": p.value,
+                        "unit": property_schema[p.measurement_type]["unit"]
+                    }
 
-            semantic_data['@id'] = str(uuid.uuid4())
-            semantic_data['collections'].extend(list(serialized_collections.values()))
-
-            return semantic_data
+                collection_schema["hasMember"].append(item_schema)
+                semantic_data['@graph'].append(collection_schema)
         except Exception as e:
             logger.exception(e)
+        else:
+            return semantic_data
