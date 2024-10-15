@@ -5,6 +5,7 @@ from collections import defaultdict
 from src import utils
 from src.models.point import Point
 from src.models.prediction import Prediction
+from src.models.weather_data import WeatherData
 
 
 logger = logging.getLogger(__name__)
@@ -36,8 +37,8 @@ class InteroperabilitySchema:
 
     collection_schema = {
         '@id': "",
-        '@type': ["ObservationCollection","WeatherForecast"],
-        "description": "5-day weather forecast on 2024-10-01T12:00:00+00:00",
+        '@type': ["ObservationCollection"],
+        "description": "",
         "hasFeatureOfInterest": {
             "@id": "",
             "@type": ["FeatureOfInterest"],
@@ -78,6 +79,35 @@ class InteroperabilitySchema:
         },
     }
 
+    @classmethod
+    def weather_data_to_jsonld(cls, wdata: WeatherData, point: Point) -> dict:
+        property_schema = cls.property_schema
+        semantic_data = utils.deepcopy_dict(cls.schema)
+
+        collection_schema = utils.deepcopy_dict(cls.collection_schema)
+        collection_schema["@id"] = utils.generate_uuid("weather:data")
+        collection_schema["description"] = "Temperature Humidity Index"
+        collection_schema["resultTime"] = wdata.data["dt"]
+        collection_schema["phenomenonTime"] = wdata.data["dt"]
+        collection_schema["hasFeatureOfInterest"]["@id"] = utils.generate_uuid("weather:data:foi")
+        collection_schema["hasFeatureOfInterest"]["@type"].append(point.type)
+        collection_schema["hasFeatureOfInterest"]["lat"] = point.location.coordinates[0]
+        collection_schema["hasFeatureOfInterest"]["long"] = point.location.coordinates[1]
+
+        item_prefix = "weather:data:thi"
+        item_schema = utils.deepcopy_dict(cls.item_schema)
+        item_schema["@id"] = utils.generate_uuid(item_prefix)
+        item_schema["observedProperty"] = "cf:temperature_humidity_index"
+        item_schema["hasResult"] = {
+            "@id": utils.generate_uuid(f"{item_prefix}:result"),
+            "@type": "Result",
+            "numericValue": wdata.thi,
+            "unit": None
+        }
+
+        collection_schema["hasMember"].append(item_schema)
+        semantic_data['@graph'].append(collection_schema)
+        return semantic_data
 
     @classmethod
     def predictions_to_jsonld(cls, predictions: List[Prediction], spatial_entity: Point) -> dict:
@@ -92,6 +122,8 @@ class InteroperabilitySchema:
             for timestamp, preds in tmpst_buckets.items():
                 collection_schema = utils.deepcopy_dict(cls.collection_schema)
                 collection_schema["@id"] = utils.generate_uuid("weather:forecast")
+                collection_schema["type"].append("WeatherForecast")
+                collection_schema["description"] = "5-day weather forecast"
                 collection_schema["resultTime"] = timestamp
                 collection_schema["phenomenonTime"] = timestamp
                 collection_schema["hasFeatureOfInterest"]["@id"] = utils.generate_uuid("weather:forecast:foi")
