@@ -7,7 +7,7 @@ from beanie import init_beanie, Document
 from src.core.dao import Dao
 from src.external_services.openweathermap import OpenWeatherMap
 from src.main import create_app
-from src.routes import router
+from src.api.api import api_router
 import src.utils as utils
 
 
@@ -27,7 +27,7 @@ async def openweathermap_srv():
 @pytest.fixture
 async def app():
     _app = create_app()
-    _app.include_router(router)
+    _app.include_router(api_router)
 
     # Mock the MongoDB client
     mongodb_client = AsyncMongoMockClient()
