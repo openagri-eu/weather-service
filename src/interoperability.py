@@ -85,21 +85,21 @@ class InteroperabilitySchema:
         semantic_data = utils.deepcopy_dict(cls.schema)
 
         collection_schema = utils.deepcopy_dict(cls.collection_schema)
-        collection_schema["@id"] = utils.generate_uuid("weather:data")
+        collection_schema["@id"] = utils.generate_uuid("weather:data", f"{wdata.data["dt"]}")
         collection_schema["description"] = "Temperature Humidity Index"
         collection_schema["resultTime"] = wdata.data["dt"]
         collection_schema["phenomenonTime"] = wdata.data["dt"]
-        collection_schema["hasFeatureOfInterest"]["@id"] = utils.generate_uuid("weather:data:foi")
+        collection_schema["hasFeatureOfInterest"]["@id"] = utils.generate_uuid("weather:data:foi", point.id)
         collection_schema["hasFeatureOfInterest"]["@type"].append(point.type)
         collection_schema["hasFeatureOfInterest"]["lat"] = point.location.coordinates[0]
         collection_schema["hasFeatureOfInterest"]["long"] = point.location.coordinates[1]
 
         item_prefix = "weather:data:thi"
         item_schema = utils.deepcopy_dict(cls.item_schema)
-        item_schema["@id"] = utils.generate_uuid(item_prefix)
+        item_schema["@id"] = utils.generate_uuid(item_prefix, wdata.id)
         item_schema["observedProperty"] = "cf:temperature_humidity_index"
         item_schema["hasResult"] = {
-            "@id": utils.generate_uuid(f"{item_prefix}:result"),
+            "@id": utils.generate_uuid(f"{item_prefix}:result", wdata.id),
             "@type": "Result",
             "numericValue": wdata.thi,
             "unit": None
@@ -121,12 +121,12 @@ class InteroperabilitySchema:
         try:
             for timestamp, preds in tmpst_buckets.items():
                 collection_schema = utils.deepcopy_dict(cls.collection_schema)
-                collection_schema["@id"] = utils.generate_uuid("weather:forecast")
-                collection_schema["type"].append("WeatherForecast")
+                collection_schema["@id"] = utils.generate_uuid("weather:forecast", f"{timestamp}")
+                collection_schema["@type"].append("WeatherForecast")
                 collection_schema["description"] = "5-day weather forecast"
                 collection_schema["resultTime"] = timestamp
                 collection_schema["phenomenonTime"] = timestamp
-                collection_schema["hasFeatureOfInterest"]["@id"] = utils.generate_uuid("weather:forecast:foi")
+                collection_schema["hasFeatureOfInterest"]["@id"] = utils.generate_uuid("weather:forecast:foi", spatial_entity.id)
                 collection_schema["hasFeatureOfInterest"]["@type"].append(spatial_entity.type)
                 collection_schema["hasFeatureOfInterest"]["lat"] = spatial_entity.location.coordinates[0]
                 collection_schema["hasFeatureOfInterest"]["long"] = spatial_entity.location.coordinates[1]
@@ -134,10 +134,10 @@ class InteroperabilitySchema:
                 for p in preds:
                     item_prefix = f"weather:forecast:{property_schema[p.measurement_type]["measurement"].lower()}"
                     item_schema = utils.deepcopy_dict(cls.item_schema)
-                    item_schema["@id"] = utils.generate_uuid(item_prefix)
+                    item_schema["@id"] = utils.generate_uuid(item_prefix, p.id)
                     item_schema["observedProperty"] = f"cf:{p.measurement_type}"
                     item_schema["hasResult"] = {
-                        "@id": utils.generate_uuid(f"{item_prefix}:result"),
+                        "@id": utils.generate_uuid(f"{item_prefix}:result", p.id),
                         "@type": "Result",
                         "numericValue": p.value,
                         "unit": property_schema[p.measurement_type]["unit"]

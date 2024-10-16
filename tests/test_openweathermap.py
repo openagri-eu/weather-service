@@ -113,7 +113,7 @@ class TestOpenWeatherMap:
                 '@id': '',
             'collections': []
         })
-        openweathermap.InteroperabilitySchema.serialize = mock
+        openweathermap.InteroperabilitySchema.predictions_to_jsonld = mock
 
         lat, lon = (42.424242, 24.242424)
         with pytest.raises(HTTPException):
@@ -161,3 +161,5 @@ class TestOpenWeatherMap:
         result = await openweathermap_srv.get_thi(lat, lon)
         assert isinstance(result, dict)
         assert result['thi'] == 86.74
+
+

@@ -28,8 +28,8 @@ def extract_value_from_dict_path(d: dict, path: list):
 
 
 # Function to generate a UUID with a specific prefix
-def generate_uuid(prefix):
-    return f"urn:openagri:{prefix}:{uuid.uuid4()}"
+def generate_uuid(prefix, identifier=None):
+    return f"urn:openagri:{prefix}:{identifier if identifier else uuid.uuid4()}"
 
 async def http_get(url: str) -> dict:
     async with httpx.AsyncClient() as client:
