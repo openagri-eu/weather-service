@@ -76,7 +76,7 @@ class Dao():
 
     # Authenticate a user
     async def authenticate_user(self, email: str, password: str) -> Optional[User]:
-        user = self.find_user_by_email(email=email)
+        user = await self.find_user_by_email(email=email)
         if not user:
             return None
         if not verify_password(password, user.password):

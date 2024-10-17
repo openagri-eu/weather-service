@@ -1,6 +1,6 @@
 from typing import Optional
 from fastapi.security import OAuth2PasswordBearer
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 import jwt
 from pydantic import ValidationError
 
@@ -22,7 +22,7 @@ async def current_user(token: str = Depends(oauth2_scheme)) -> User: # type: ign
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials",
         )
-    user = await User.find({"email": decoded_jwt_token["sub"]}).first_or_none()
+    user = await User.find(User.email == decoded_jwt_token["sub"][9:-2]).first_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user

@@ -50,7 +50,7 @@ async def login(request: Request, form_data: Annotated[OAuth2PasswordRequestForm
 
     access_token_expires = timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.username}, expire_time=access_token_expires
+        data={"sub": user.email}, expire_time=access_token_expires
     )
 
     return AuthToken(jwt_token=access_token)
