@@ -8,7 +8,8 @@ from beanie import init_beanie, Document
 from src.core import config
 from src import utils
 from src.core.dao import Dao
-from src.routes import router
+from src.api.api import api_router
+from src.api.user import user_router
 from src.external_services.openweathermap import OpenWeatherMap
 
 
@@ -46,7 +47,8 @@ class Application(fastapi.FastAPI):
 
         async def add_router(app: Application):
             logger.debug("Setup routes")
-            app.include_router(router)
+            app.include_router(api_router)
+            app.include_router(user_router)
             logger.debug("Routes added!")
 
         self.add_event_handler(event_type="startup", func=partial(add_router, app=self))
