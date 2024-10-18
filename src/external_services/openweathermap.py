@@ -64,7 +64,7 @@ class OpenWeatherMap():
             predictions = await self.parseForecast5dayResponse(point, openweathermap_json)
         except httpx.HTTPError as httpe:
             logger.exception(httpe)
-            raise SourceError(f"Request to {httpe.request.url} was not successful")
+            raise SourceError(f"Request to {httpe.request} was not successful")
         except Exception as e:
             logger.exception(e)
             raise e
@@ -77,15 +77,7 @@ class OpenWeatherMap():
     # Returns the forecast Predictions.
     async def get_weather_forecast5days(self, lat: float, lon: float) -> dict:
         predictions = await self.get_predictions(lat, lon)
-        return [p.model_dump(
-                        include={
-                            'value': True,
-                            'timestamp': True,
-                            'measurement_type': True,
-                            'source': True,
-                            'spatial_entity': {'location': {'coordinates'}}
-                        }
-                    ) for p in predictions]
+        return predictions
 
     # Fetches the 5-day weather forecast in Linked Data format for a given latitude and longitude.
     # Calls the get_weather_forecast5days method and transforms the data into JSON-LD format.
@@ -103,13 +95,7 @@ class OpenWeatherMap():
     # Returns the calculated THI.
     async def get_thi(self, lat: float, lon: float) -> float:
         weather_data = await self.save_weather_data_thi(lat, lon)
-        return weather_data.model_dump(
-                                include={
-                                    'spatial_entity': {'location': 'coordinates'},
-                                    'thi': True,
-                                    'data': {'dt': True}
-                                }
-                            )
+        return weather_data
 
     # Fetches and calculates the Temperature-Humidity Index (THI) in Linked Data format
     # for a given latitude and longitude.
@@ -128,16 +114,7 @@ class OpenWeatherMap():
     # Returns the weather data as a dictionary.
     async def get_weather(self, lat: float, lon: float) -> dict:
         weather_data = await self.save_weather_data_thi(lat, lon)
-        return weather_data.model_dump(
-                                include={
-                                    'spatial_entity': {'location': 'coordinates'},
-                                    'data': {
-                                        'weather': {0: 'description'},
-                                        'main': {'temp', 'humidity', 'pressure'},
-                                        'wind': {'speed'}, 'dt': True
-                                    }
-                                }
-                            )
+        return weather_data
 
     # Fetch weather forecast and calculates fligh conditions for UAV
     async def get_flight_forecast5(self, lat: float, lon: float) -> dict:

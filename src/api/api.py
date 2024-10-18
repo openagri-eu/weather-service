@@ -4,6 +4,9 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 
 from src.api.deps import authenticate_request
 
+from src.schemas.prediction import PredictionOut
+from src.schemas.weather_data import THIDataOut, WeatherDataOut
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +16,7 @@ api_router = APIRouter()
 # Fetches the 5-day weather forecast for a given latitude and longitude.
 # If an error occurs, a 500 HTTP exception is raised.
 # Returns the forecast data if successful.
-@api_router.get("/api/data/forecast5")
+@api_router.get("/api/data/forecast5", response_model=list[PredictionOut])
 async def get_weather_forecast5days(
     request: Request,
     lat: float,
@@ -55,7 +58,15 @@ async def get_weather_forecast5days_ld(
 # Returns the weather data if successful.
 
 
-@api_router.get("/api/data/weather")
+@api_router.get("/api/data/weather", response_model_include={
+                                    'id': True,
+                                    'spatial_entity': True,
+                                    'data': {
+                                        'weather': {0: 'description'},
+                                        'main': {'temp', 'humidity', 'pressure'},
+                                        'wind': {'speed'}, 'dt': True
+                                    }
+                                })
 async def get_weather(
     request: Request,
     lat: float,
@@ -76,7 +87,7 @@ async def get_weather(
 # Returns the THI data if successful.
 
 
-@api_router.get("/api/data/thi")
+@api_router.get("/api/data/thi", response_model=THIDataOut)
 async def get_thi(
     request: Request,
     lat: float,
