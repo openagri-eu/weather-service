@@ -3,6 +3,9 @@ import logging.config
 
 
 def setup_logging(level: str):
+    # Disable noisy logging
+    logging.getLogger('pymongo').setLevel(logging.WARNING)
+
     logging_config = {
         'version': 1,
         'disable_existing_loggers': False,

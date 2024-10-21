@@ -49,11 +49,8 @@ class OpenWeatherMap():
     def setup_dao(self, dao: Dao):
        self.dao = dao
 
-    # Fetches the 5-day weather forecast for a given latitude and longitude.
-    # Checks if the forecast is cached, otherwise fetches it from OpenWeatherMap.
-    # If an error occurs, it raises a SourceError for HTTP errors or the original exception.
-    # Returns the forecast Predictions.
-    async def get_weather_forecast5days(self, lat: float, lon: float) -> dict:
+    # Helper function to get weather predictions from DB or OpenWeatherMap
+    async def get_predictions(self, lat: float, lon: float) -> list[Prediction]:
         try:
             predictions = await self.dao.find_predictions_for_point(lat, lon)
             if predictions:
@@ -70,31 +67,32 @@ class OpenWeatherMap():
             logger.exception(e)
             raise e
         else:
-            return [p.model_dump(
-                            include={
-                                'value': True,
-                                'timestamp': True,
-                                'measurement_type': True,
-                                'source': True,
-                                'spatial_entity': {'location': {'coordinates'}}
-                            }
-                        ) for p in predictions]
+            return predictions
+
+    # Fetches the 5-day weather forecast for a given latitude and longitude.
+    # Checks if the forecast is cached, otherwise fetches it from OpenWeatherMap.
+    # If an error occurs, it raises a SourceError for HTTP errors or the original exception.
+    # Returns the forecast Predictions.
+    async def get_weather_forecast5days(self, lat: float, lon: float) -> dict:
+        predictions = await self.get_predictions(lat, lon)
+        return [p.model_dump(
+                        include={
+                            'value': True,
+                            'timestamp': True,
+                            'measurement_type': True,
+                            'source': True,
+                            'spatial_entity': {'location': {'coordinates'}}
+                        }
+                    ) for p in predictions]
 
     # Fetches the 5-day weather forecast in Linked Data format for a given latitude and longitude.
     # Calls the get_weather_forecast5days method and transforms the data into JSON-LD format.
     # Raises an exception if anything goes wrong.
     # Returns the forecast data in linked-data (JSON-LD) format.
     async def get_weather_forecast5days_ld(self, lat: float, lon: float) -> dict:
-        raise HTTPException(status_code=500, detail="Route not implemented!")
-        # TODO: Provide interoperability using OCSM
-        try:
-            predictions = await self.get_weather_forecast5days(lat, lon)
-            point = await self.dao.find_point(lat, lon)
-            jsonld_data = InteroperabilitySchema.serialize(predictions, point)
-        except Exception as e:
-            logger.exception(e)
-            raise e
-
+        predictions = await self.get_predictions(lat, lon)
+        point = await self.dao.find_point(lat, lon)
+        jsonld_data = InteroperabilitySchema.predictions_to_jsonld(predictions, point)
         return jsonld_data
 
     # Fetches and calculates the Temperature-Humidity Index (THI) for a given latitude and longitude.
@@ -102,21 +100,12 @@ class OpenWeatherMap():
     # Raises a SourceError for HTTP errors or the original exception if any other error occurs.
     # Returns the calculated THI.
     async def get_thi(self, lat: float, lon: float) -> float:
-        try:
-            weather_data = await self.dao.find_weather_data_for_point(lat, lon)
-            if not weather_data:
-                weather_data = await self.save_weather_data_thi(lat, lon)
-        except httpx.HTTPError as httpe:
-            logger.exception(httpe)
-            raise SourceError(f"Request to {httpe.request.url} was not successful")
-        except Exception as e:
-            logger.exception(e)
-            raise e
-
+        weather_data = await self.save_weather_data_thi(lat, lon)
         return weather_data.model_dump(
                                 include={
                                     'spatial_entity': {'location': 'coordinates'},
-                                    'thi': True
+                                    'thi': True,
+                                    'data': {'dt': True}
                                 }
                             )
 
@@ -126,24 +115,17 @@ class OpenWeatherMap():
     # Raises a SourceError for HTTP errors or the original exception if any other error occurs.
     # Returns the calculated THI in linked-data (JSON-LD) format.
     async def get_thi_ld(self, lat: float, lon: float) -> dict:
-        raise HTTPException(status_code=500, detail="Route not implemented!")
+        weather_data = await self.save_weather_data_thi(lat, lon)
+        point = await self.dao.find_point(lat, lon)
+        jsonld_data = InteroperabilitySchema.weather_data_to_jsonld(weather_data, point)
+        return jsonld_data
 
     # Fetches the current weather data for a given latitude and longitude.
     # If the weather data is not cached, it fetches it from OpenWeatherMap and saved in the DB.
     # Raises a SourceError for HTTP errors or the original exception if any other error occurs.
     # Returns the weather data as a dictionary.
     async def get_weather(self, lat: float, lon: float) -> dict:
-        try:
-            weather_data = await self.dao.find_weather_data_for_point(lat, lon)
-            if not weather_data:
-                weather_data = await self.save_weather_data_thi(lat, lon)
-        except httpx.HTTPError as httpe:
-            logger.exception(httpe)
-            raise SourceError(f"Request to {httpe.request.url} was not successful")
-        except Exception as e:
-            logger.exception(e)
-            raise e
-
+        weather_data = await self.save_weather_data_thi(lat, lon)
         return weather_data.model_dump(
                                 include={
                                     'spatial_entity': {'location': 'coordinates'},
@@ -158,12 +140,24 @@ class OpenWeatherMap():
     # Asynchronously fetches weather data from the OpenWeatherMap API for a given latitude and longitude.
     # Calculates the Temperature-Humidity Index (THI), and stores the weather data along with the THI in the database.
     async def save_weather_data_thi(self, lat: float, lon: float) -> WeatherData:
-        point = await self.dao.create_point(lat, lon)
-        url = f'{self.properties["endpointURI"]}/weather?units=metric&lat={lat}&lon={lon}&appid={config.OPENWEATHERMAP_API_KEY}'
-        openweathermap_json = await utils.http_get(url)
-        temp = openweathermap_json["main"]["temp"]
-        rh = openweathermap_json["main"]["humidity"]
-        thi = utils.calculate_thi(temp, rh)
+        try:
+            weather_data = await self.dao.find_weather_data_for_point(lat, lon)
+            if weather_data:
+                return weather_data
+
+            point = await self.dao.create_point(lat, lon)
+            url = f'{self.properties["endpointURI"]}/weather?units=metric&lat={lat}&lon={lon}&appid={config.OPENWEATHERMAP_API_KEY}'
+            openweathermap_json = await utils.http_get(url)
+            temp = openweathermap_json["main"]["temp"]
+            rh = openweathermap_json["main"]["humidity"]
+            thi = utils.calculate_thi(temp, rh)
+        except httpx.HTTPError as httpe:
+            logger.exception(httpe)
+            raise SourceError(f"Request to {httpe.request.url} was not successful")
+        except Exception as e:
+            logger.exception(e)
+            raise e
+
         return await self.dao.save_weather_data_for_point(point, data=openweathermap_json, thi=thi)
 
     # Parses the 5-day forecast data and extracts useful predictions based on the provided schema.

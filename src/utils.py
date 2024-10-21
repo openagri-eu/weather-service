@@ -7,6 +7,7 @@ import logging
 import os
 import struct
 import copy
+import uuid
 
 import httpx
 
@@ -17,12 +18,18 @@ logger = logging.getLogger(__name__)
 def deepcopy_dict(d: dict) -> dict:
     return copy.deepcopy(d)
 
+
 def extract_value_from_dict_path(d: dict, path: list):
     return functools.reduce(
                 lambda elem, current_path: elem[current_path] if elem and current_path in elem else None,
                 path,
                 d
             )
+
+
+# Function to generate a UUID with a specific prefix
+def generate_uuid(prefix, identifier=None):
+    return f"urn:openagri:{prefix}:{identifier if identifier else uuid.uuid4()}"
 
 async def http_get(url: str) -> dict:
     async with httpx.AsyncClient() as client:
@@ -56,6 +63,7 @@ def number_to_base32_string(num: float) -> str:
     base32_encoded = base64.b32encode(byte_array).decode('utf-8').rstrip('=')
     
     return base32_encoded
+
 
 def load_classes(pathname, base_classes):
     classes = []
