@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 import httpx
 from fastapi import HTTPException
@@ -68,6 +69,9 @@ class OpenWeatherMap():
             raise e
         else:
             return predictions
+
+    async def get_historical_labels(self, lat: float, lon: float, from_time: datetime, to_time: datatime):
+        ...
 
     # Fetches the 5-day weather forecast for a given latitude and longitude.
     # Checks if the forecast is cached, otherwise fetches it from OpenWeatherMap.
