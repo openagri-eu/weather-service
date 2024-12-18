@@ -7,8 +7,10 @@ import logging
 import os
 import struct
 import copy
+from typing import List
 import uuid
 
+from fastapi import APIRouter
 import httpx
 
 
@@ -27,9 +29,20 @@ def extract_value_from_dict_path(d: dict, path: list):
             )
 
 
+# List application routes
+def list_routes_from_routers(routers: list[APIRouter]):
+    routes = []
+    for router in routers:
+        for route in router.routes:
+            if hasattr(route, "methods"):
+                routes.append({"path": route.path, "methods": list(route.methods)})
+    return routes
+
+
 # Function to generate a UUID with a specific prefix
 def generate_uuid(prefix, identifier=None):
     return f"urn:openagri:{prefix}:{identifier if identifier else uuid.uuid4()}"
+
 
 async def http_get(url: str) -> dict:
     async with httpx.AsyncClient() as client:
