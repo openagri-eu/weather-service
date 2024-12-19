@@ -9,6 +9,7 @@ from beanie import init_beanie, Document
 
 from src.core import config
 from src import utils
+from src import gatekeeper_utils as gk_utils
 from src.core.dao import Dao
 from src.api.api import api_router
 from src.api.auth import auth_router
@@ -55,7 +56,38 @@ class Application(fastapi.FastAPI):
             app.include_router(auth_router)
             logger.debug("Routes added!")
 
+        async def register_routes(app: Application):
+            logger.debug("Registering routes to Gatekeeper")
+
+            token, refresh = await gk_utils.gk_login()
+            logging.debug(f"Obtained JWT token from gatekeeper: {token}")
+
+            service_directory = await gk_utils.gk_service_directory(token)
+            logging.debug(f"Fetched service directory: {service_directory}")
+
+            app_routes = utils.list_routes_from_routers([api_router])
+            logging.debug(f"App routes: {app_routes}")
+
+            existing_endpoints = {entry["endpoint"]: entry for entry in service_directory}
+            for route in app_routes:
+                relative_path = route["path"].lstrip("/")
+                if relative_path not in existing_endpoints:
+                    service_data = {
+                        "base_url": f"{config.WEATHER_SRV_HOSTNAME}:{config.WEATHER_SRV_PORT}",
+                        "service_name": "weather_data",
+                        "endpoint": relative_path,
+                        "methods": route["methods"],
+                        # "params": "lat{float}&lon{float}",
+                    }
+                    response = await gk_utils.gk_service_register(token, service_data)
+                    logging.info(f"Registered new service: {response}")
+
+            await gk_utils.gk_logout(refresh)
+
+
         self.add_event_handler(event_type="startup", func=partial(add_router, app=self))
+        if config.GATEKEEPER_URL:
+            self.add_event_handler(event_type="startup", func=partial(register_routes, app=self))
         return
 
 
