@@ -11,6 +11,8 @@ from src.models.prediction import Prediction
 from src.interoperability import InteroperabilitySchema
 from src.models.weather_data import WeatherData
 
+from src.external_services.sample_uav_response import UAV_FLIGHT_CONDITION_RESPONSE
+
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +138,11 @@ class OpenWeatherMap():
                                     }
                                 }
                             )
+
+    # Fetch weather forecast and calculates fligh conditions for UAV
+    async def get_flight_forecast5(self, lat: float, lon: float) -> dict:
+        return UAV_FLIGHT_CONDITION_RESPONSE
+
 
     # Asynchronously fetches weather data from the OpenWeatherMap API for a given latitude and longitude.
     # Calculates the Temperature-Humidity Index (THI), and stores the weather data along with the THI in the database.
