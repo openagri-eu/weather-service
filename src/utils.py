@@ -1,4 +1,5 @@
 import base64
+import csv
 import functools
 import glob
 from importlib import import_module
@@ -12,6 +13,8 @@ import uuid
 
 from fastapi import APIRouter
 import httpx
+
+from src.models.uav import DroneModel
 
 
 logger = logging.getLogger(__name__)
@@ -87,3 +90,34 @@ def load_classes(pathname, base_classes):
                 classes.append(obj)
 
     return classes
+
+
+# Reads the CSV file without pandas and inserts data into MongoDB
+async def load_drones_from_csv(csv_path: str):
+    # Checks if data exists before inserting new records from CSV
+    existing_count = await DroneModel.count()
+    if existing_count > 0:
+        print(f"Skipping CSV import. {existing_count} drones already exist in the database.")
+        return
+
+    drones = []
+
+    with open(csv_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            # Convert data types where needed
+            drone_data = {
+                "model": row["Model"],
+                "manufacturer": row["Manufacturer"],
+                "min_operating_temp": float(row["Min. operating temp"]),
+                "max_operating_temp": float(row["Max. operating temp"]),
+                "max_wind_speed": float(row["Max. wind speed resistance"]),
+                "precipitation_tolerance": float(row["Precipitation tolerance"]),
+            }
+            drones.append(DroneModel(**drone_data))
+
+    if drones:
+        await DroneModel.insert_many(drones)
+        logger.info(f"Inserted {len(drones)} drone records into MongoDB.")
+    else:
+        logger.info("No records found in the CSV file.")
