@@ -124,14 +124,13 @@ async def get_thi_ld(
         return result
 
 
-# Forecasts suitable UAV flight conditions
-@api_router.get("/api/data/fligh_forecast5")
+# Forecasts suitable UAV flight conditions for all drones
+@api_router.get("/api/data/flight_forecast5")
 async def get_flight_forecast5(
     request: Request,
     lat: float,
     lon: float,
     payload: dict = Depends(authenticate_request),
-    uavmodel: str | None = None,
 ):
     try:
         result = await request.app.weather_app.get_flight_forecast5(lat, lon)
@@ -140,3 +139,15 @@ async def get_flight_forecast5(
         raise HTTPException(status_code=500)
     else:
         return result
+
+@api_router.get("/api/data/flight_forecast5/{uavmodel}")
+async def get_flight_forecast_for_uav(request: Request, lat: float, lon: float, uavmodel: str, payload: dict = Depends(authenticate_request),
+):
+    try:
+        result = await request.app.weather_app.get_flight_forecast_for_uav(lat, lon, uavmodel)
+    except Exception as e:
+        logger.exception(e)
+        raise HTTPException(status_code=500)
+    else:
+        return result
+

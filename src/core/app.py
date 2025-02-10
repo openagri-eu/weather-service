@@ -24,7 +24,7 @@ class Application(fastapi.FastAPI):
         super().__init__(*args, **kwargs)
         self.dao = self.setup_dao()
         self.weather_app = self.setup_weather_app()
-        self.setup_drones()
+        self.setup_uavs()
         self.setup_routes()
         self.setup_openapi()
         self.setup_middlewares()
@@ -101,14 +101,14 @@ class Application(fastapi.FastAPI):
         self.add_event_handler(event_type="startup", func=partial(add_dao, app=self))
         return OpenWeatherMap()
 
-    def setup_drones(self):
+    def setup_uavs(self):
         logger.debug("Setup connection with external weather service")
 
-        async def load_drones_from_csv(app: Application):
+        async def load_uavs_from_csv(app: Application):
             csv_path = '/data/drone_registrations.csv'
-            await utils.load_drones_from_csv(csv_path)
+            await utils.load_uavs_from_csv(csv_path)
 
-        self.add_event_handler(event_type="startup", func=partial(load_drones_from_csv, app=self))
+        self.add_event_handler(event_type="startup", func=partial(load_uavs_from_csv, app=self))
         return OpenWeatherMap()
 
     def setup_openapi(self):

@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 
 import httpx
@@ -9,6 +10,7 @@ from src.core.dao import Dao
 from src.models.point import Point
 from src.models.prediction import Prediction
 from src.interoperability import InteroperabilitySchema
+from src.models.uav import FlyStatus, UAVModel
 from src.models.weather_data import WeatherData
 
 from src.external_services.sample_uav_response import UAV_FLIGHT_CONDITION_RESPONSE
@@ -118,7 +120,67 @@ class OpenWeatherMap():
 
     # Fetch weather forecast and calculates fligh conditions for UAV
     async def get_flight_forecast5(self, lat: float, lon: float) -> dict:
-        return UAV_FLIGHT_CONDITION_RESPONSE
+      ...
+
+    async def get_flight_forecast_for_uav(self, lat: float, lon: float, uavmodel: str):
+        try:
+            uav = await UAVModel.find_one(UAVModel.model == uavmodel)
+            if not uav:
+                raise HTTPException(status_code=404, detail="UAV model not found")
+
+            # predictions = await self.dao.find_predictions_for_point(lat, lon)
+            # if predictions:
+            #     return predictions
+
+            point = await self.dao.create_point(lat, lon)
+            url = f'{self.properties["endpointURI"]}/forecast?units=metric&lat={lat}&lon={lon}&appid={config.OPENWEATHERMAP_API_KEY}'
+            openweathermap_json = await utils.http_get(url)
+            forecast5 = openweathermap_json
+            if "list" not in forecast5:
+                raise HTTPException(status_code=500, detail="Invalid weather data received")
+
+            results = []
+            for forecast in forecast5["list"]:
+                forecast_time = datetime.strptime(forecast["dt_txt"], "%Y-%m-%d %H:%M:%S")
+                weather_data = {
+                    "temp": forecast["main"]["temp"],
+                    "wind": forecast["wind"]["speed"],
+                    "precipitation": forecast.get("pop", 0),  # Using Probability of Precipitation (pop)
+                }
+
+                status = await utils.evaluate_flight_conditions(uav, weather_data)
+
+                flight_data = FlyStatus(
+                    timestamp=forecast_time,
+                    uav_model=uav.model,
+                    status=status.value,
+                    weather_params=weather_data,
+                    weather_source="OpenWeatherMap",
+                    location=point.location.model_dump()
+                )
+                await flight_data.insert()
+
+                results.append({
+                    "flight_conditions": status.value,
+                    "uavmodel": uav.model,
+                    "timestamp": flight_data.timestamp.isoformat(),
+                    "weather_source": "OpenWeatherMap",
+                    "spatial_entity": {
+                        "location": {
+                            "coordinates": [lat, lon]
+                        }
+                    },
+                    "weather_forecast_params": weather_data
+                })
+
+        except httpx.HTTPError as httpe:
+            logger.exception(httpe)
+            raise SourceError(f"Request to {httpe.request.url} was not successful")
+        except Exception as e:
+            logger.exception(e)
+            raise e
+
+        return results
 
 
     # Asynchronously fetches weather data from the OpenWeatherMap API for a given latitude and longitude.
