@@ -17,6 +17,7 @@ mypy_report
 *.pyc
 /data
 *.vim
+scripts
 
 # Ignore compiled protobuf files
 *_pb2.py
