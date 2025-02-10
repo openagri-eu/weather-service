@@ -58,7 +58,7 @@ async def get_weather_forecast5days_ld(
 # Returns the weather data if successful.
 
 
-@api_router.get("/api/data/weather", response_model_include={
+@api_router.get("/api/data/weather", response_model=WeatherDataOut, response_model_include={
                                     'id': True,
                                     'spatial_entity': True,
                                     'data': {
