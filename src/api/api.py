@@ -1,10 +1,12 @@
 import logging
+from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 
 from src.api.deps import authenticate_request
 
 from src.schemas.prediction import PredictionOut
+from src.schemas.uav import FlightForecastListResponse
 from src.schemas.weather_data import THIDataOut, WeatherDataOut
 
 
@@ -126,28 +128,30 @@ async def get_thi_ld(
 
 # Forecasts suitable UAV flight conditions for all drones
 @api_router.get("/api/data/flight_forecast5")
-async def get_flight_forecast5(
+async def get_flight_forecast_for_all_uavs(
     request: Request,
     lat: float,
     lon: float,
+    uavmodels: Annotated[list[str] | None, Query()] = None,
+    status_filter: Annotated[list[str] | None, Query()] = None,
     payload: dict = Depends(authenticate_request),
 ):
     try:
-        result = await request.app.weather_app.get_flight_forecast5(lat, lon)
+        result = await request.app.weather_app.get_flight_forecast_for_all_uavs(lat, lon, uavmodels, status_filter)
     except Exception as e:
         logger.exception(e)
-        raise HTTPException(status_code=500)
+        raise e
     else:
         return result
 
-@api_router.get("/api/data/flight_forecast5/{uavmodel}")
+@api_router.get("/api/data/flight_forecast5/{uavmodel}", response_model=FlightForecastListResponse)
 async def get_flight_forecast_for_uav(request: Request, lat: float, lon: float, uavmodel: str, payload: dict = Depends(authenticate_request),
 ):
     try:
         result = await request.app.weather_app.get_flight_forecast_for_uav(lat, lon, uavmodel)
     except Exception as e:
         logger.exception(e)
-        raise HTTPException(status_code=500)
+        raise e
     else:
         return result
 
