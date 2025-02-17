@@ -3,7 +3,7 @@ version: '3'
 
 services:
   app:
-    image: ghcr.io/openagri-eu/weather-service:latest
+    image: ghcr.io/openagri-eu/weather-service:${TAG}
     build: .
     depends_on:
       - mongodb
@@ -27,6 +27,8 @@ services:
       GATEKEEPER_URL: ${INTERNAL_GK_URL}
       WEATHER_SRV_GATEKEEPER_USER: ${GATEKEEPER_SUPERUSER_USERNAME}
       WEATHER_SRV_GATEKEEPER_PASSWORD: ${GATEKEEPER_SUPERUSER_PASSWORD}
+    volumes:
+      - ./data:/data:rw
 
   mongodb:
     image: mongo:4
