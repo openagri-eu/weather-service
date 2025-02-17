@@ -104,7 +104,7 @@ async def load_uavs_from_csv(csv_path: str):
     # Checks if data exists before inserting new records from CSV
     existing_count = await UAVModel.count()
     if existing_count > 0:
-        print(f"Skipping CSV import. {existing_count} uavs already exist in the database.")
+        logging.info(f"Skipping CSV import. {existing_count} uavs already exist in the database.")
         return
 
     uavs = []
