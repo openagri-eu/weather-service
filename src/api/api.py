@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from src.api.deps import authenticate_request
 
 from src.schemas.prediction import PredictionOut
+from src.schemas.spray import SprayForecastResponse
 from src.schemas.uav import FlightForecastListResponse
 from src.schemas.weather_data import THIDataOut, WeatherDataOut
 
@@ -37,8 +38,6 @@ async def get_weather_forecast5days(
 # Fetches the 5-day weather forecast in JSON-LD format for a given latitude and longitude.
 # If an error occurs, a 500 HTTP exception is raised.
 # Returns the forecast data in json-ld format if successful.
-
-
 @api_router.get("/api/linkeddata/forecast5")
 async def get_weather_forecast5days_ld(
     request: Request,
@@ -58,8 +57,6 @@ async def get_weather_forecast5days_ld(
 # Fetches the current weather data for a given latitude and longitude.
 # If an error occurs, a 500 HTTP exception is raised.
 # Returns the weather data if successful.
-
-
 @api_router.get("/api/data/weather", response_model=WeatherDataOut, response_model_include={
                                     'id': True,
                                     'spatial_entity': True,
@@ -87,8 +84,6 @@ async def get_weather(
 # Calculates the current Temperature-Humidity Index (THI) for a given latitude and longitude.
 # If an error occurs, a 500 HTTP exception is raised.
 # Returns the THI data if successful.
-
-
 @api_router.get("/api/data/thi", response_model=THIDataOut)
 async def get_thi(
     request: Request,
@@ -108,8 +103,6 @@ async def get_thi(
 # Calculates the current Temperature-Humidity Index (THI) for a given latitude and longitude.
 # If an error occurs, a 500 HTTP exception is raised.
 # Returns the THI data if successful.
-
-
 @api_router.get("/api/linkeddata/thi")
 async def get_thi_ld(
     request: Request,
@@ -155,3 +148,27 @@ async def get_flight_forecast_for_uav(request: Request, lat: float, lon: float, 
     else:
         return result
 
+
+# Forecast suitability of spray conditions
+@api_router.get("/api/data/spray_forecast", response_model=List[SprayForecastResponse])
+async def get_spray_forecast(request: Request, lat: float, lon: float, payload: dict = Depends(authenticate_request)):
+    try:
+        result = await request.app.weather_app.get_spray_forecast(lat, lon)
+    except Exception as e:
+        logger.exception(e)
+        raise e
+    else:
+        return result
+
+
+# Forecast suitability of spray conditions
+# Response in OCSM JSON-LD
+@api_router.get("/api/linkeddata/spray_forecast")
+async def get_spray_forecast_ld(request: Request, lat: float, lon: float, payload: dict = Depends(authenticate_request)):
+    try:
+        result = await request.app.weather_app.get_spray_forecast(lat, lon, ocsm=True)
+    except Exception as e:
+        logger.exception(e)
+        raise e
+    else:
+        return result

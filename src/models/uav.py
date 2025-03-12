@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Dict
 
 from beanie import Document
@@ -6,10 +7,15 @@ from beanie import Document
 from src.models.point import GeoJSON
 
 
+class FlightStatus(str, Enum):
+    OK = "OK"
+    NOT_OK = "NOT OK"
+    MARGINALLY_OK = "Marginally OK"
+
 class FlyStatus(Document):
     timestamp: datetime
     uav_model: str
-    status: str  # OK, NOT OK, Marginally OK
+    status: FlightStatus  # OK, NOT OK, Marginally OK
     weather_source: str
     location: GeoJSON
     weather_params: Dict[str, float]

@@ -12,9 +12,11 @@ from src.core.dao import Dao
 from src.models.point import Point
 from src.models.prediction import Prediction
 from src.interoperability import InteroperabilitySchema
+from src.models.spray import SprayForecast
 from src.models.uav import FlyStatus, UAVModel
 from src.models.weather_data import WeatherData
 
+from src.schemas.spray import SprayForecastResponse
 from src.schemas.uav import FlightForecastListResponse, FlightStatusForecastResponse
 
 
@@ -237,6 +239,59 @@ class OpenWeatherMap():
             raise e
 
         return FlightForecastListResponse(forecasts=results)
+
+
+    # Fetch weather forecast and calculate suitability of spray conditions for a specific locations
+    async def get_spray_forecast(self, lat: float, lon: float, ocsm=False) -> dict:
+
+        point = await self.dao.create_point(lat, lon)
+        url = f'{self.properties["endpointURI"]}/forecast?units=metric&lat={lat}&lon={lon}&appid={config.OPENWEATHERMAP_API_KEY}'
+        openweathermap_json = await utils.http_get(url)
+        forecast5 = openweathermap_json
+
+        if "list" not in forecast5:
+            raise HTTPException(status_code=500, detail="Invalid weather data received")
+
+        results = []
+
+        for entry in forecast5.get("list", []):
+            timestamp = datetime.strptime(entry["dt_txt"], "%Y-%m-%d %H:%M:%S")
+
+            temp = entry["main"]["temp"]
+            humidity = entry["main"]["humidity"]
+            wind = entry["wind"]["speed"] * 3.6  # Convert m/s to km/h
+            precipitation = entry.get("rain", {}).get("3h", 0.0)
+
+            # Estimate Delta T: ΔT = Dry Bulb - Wet Bulb Approximation
+            temp_wet_bulb = utils.calculate_wet_bulb(temp, humidity)
+            delta_t = temp - temp_wet_bulb
+
+            # Evaluate spray conditions
+            spray_condition, status_details = utils.evaluate_spray_conditions(temp, wind, precipitation, humidity, delta_t)
+
+            spray_data = SprayForecast(
+                timestamp=timestamp,
+                source="OpenWeatherMap",
+                location=point.location.model_dump(),
+                spray_conditions=spray_condition,
+                detailed_status=status_details
+            )
+
+            await spray_data.insert()  # Save to MongoDB
+
+            if not ocsm:
+                results.append(SprayForecastResponse(
+                    timestamp=spray_data.timestamp,
+                    spray_conditions=spray_data.spray_conditions,
+                    weather_source=spray_data.source,
+                    location=spray_data.location,
+                    detailed_status=spray_data.detailed_status
+                ))
+            else:
+                results.append("")
+
+        return results
+
 
 
 

@@ -1,4 +1,5 @@
 import base64
+import math
 import csv
 from datetime import datetime, timedelta, timezone
 import functools
@@ -10,21 +11,16 @@ import os
 import struct
 import copy
 import uuid
-from enum import Enum
 
 
 from fastapi import APIRouter
 import httpx
 
-from src.models.uav import UAVModel
+from src.models.spray import SprayStatus
+from src.models.uav import FlightStatus, UAVModel
 
 
 logger = logging.getLogger(__name__)
-
-class FlightStatus(str, Enum):
-    OK = "OK"
-    NOT_OK = "NOT OK"
-    MARGINALLY_OK = "Marginally OK"
 
 
 def deepcopy_dict(d: dict) -> dict:
@@ -74,7 +70,6 @@ async def http_get(url: str) -> dict:
 
 ## Temperature Humidity Index
 # https://www.pericoli.com/en/temperature-humidity-index-what-you-need-to-know-about-it/
-
 def calculate_thi(temperature: float, relative_humidity: float) -> float:
     relative_humidity = relative_humidity / 100 # Convert to % percentage
     thi = (0.8 * temperature) + (relative_humidity * (temperature - 14.4)) + 46.4
@@ -141,6 +136,30 @@ async def load_uavs_from_csv(csv_path: str):
         logger.info("No records found in the CSV file.")
 
 
+def calculate_wet_bulb(t_dry, rh_percent):
+    """
+    Calculate wet bulb temperature using Stull's empirical formula.
+    https://journals.ametsoc.org/view/journals/apme/50/11/jamc-d-11-0143.1.xml
+    
+    Parameters:
+    t_dry (float): Dry bulb temperature in Celsius
+    rh_percent (float): Relative humidity as a percentage (0-100)
+    
+    Returns:
+    float: Wet bulb temperature in Celsius
+    
+    Note: This is an approximation valid for RH between 5% and 99% and temperatures between -20°C and 50°C
+    """
+    t_wet = t_dry * math.atan(0.151977 * math.sqrt(rh_percent + 8.313659)) + \
+            math.atan(t_dry + rh_percent) - \
+            math.atan(rh_percent - 1.676331) + \
+            0.00391838 * math.pow(rh_percent, 1.5) * math.atan(0.023101 * rh_percent) - \
+            4.686035
+
+    return t_wet
+
+
+
 # Determines flight conditions based on uav specifications and weather data
 async def evaluate_flight_conditions(uav: UAVModel, weather: dict) -> FlightStatus:
     temp = weather["temp"]
@@ -155,4 +174,71 @@ async def evaluate_flight_conditions(uav: UAVModel, weather: dict) -> FlightStat
         return FlightStatus.MARGINALLY_OK
     
     return FlightStatus.OK
+
+#   Evaluate spray conditions based on weather data
+#   Determines the spray condition based on weather parameters.
+#   Returns a tuple: (spray_condition, detailed_status_dict)
+#
+#   Parameters:
+#   - temp: Temperature in Celsius
+#   - wind: Wind speed in km/h
+#   - precipitation: Precipitation in mm
+#   - humidity: Relative humidity in percentage
+#   - delta_t: Temperature difference in Celsius
+#
+#   Returns:
+#   - tuple: (SprayStatus enum value, dictionary of individual parameter statuses)
+#
+def evaluate_spray_conditions(temp, wind, precipitation, humidity, delta_t):
+    status = {}
+
+    # Temperature Check
+    if temp < 18:
+        status["temperature_status"] = SprayStatus.OPTIMAL
+    elif 18 <= temp <= 25:
+        status["temperature_status"] = SprayStatus.MARGINAL
+    else:
+        status["temperature_status"] = SprayStatus.UNSUITABLE
+
+    # Wind Speed Check
+    if wind < 15:
+        status["wind_status"] = SprayStatus.OPTIMAL
+    elif 15 <= wind <= 25:
+        status["wind_status"] = SprayStatus.MARGINAL
+    else:
+        status["wind_status"] = SprayStatus.UNSUITABLE
+
+    # Precipitation Check
+    if precipitation == 0:
+        status["precipitation_status"] = SprayStatus.OPTIMAL
+    elif 0 < precipitation <= 0.1:
+        status["precipitation_status"] = SprayStatus.MARGINAL
+    else:
+        status["precipitation_status"] = SprayStatus.UNSUITABLE
+
+    # Humidity Check
+    if 60 <= humidity <= 85:
+        status["humidity_status"] = SprayStatus.OPTIMAL
+    elif 45 <= humidity < 60 or 85 < humidity <= 95:
+        status["humidity_status"] = SprayStatus.MARGINAL
+    else:
+        status["humidity_status"] = SprayStatus.UNSUITABLE
+
+    # Delta T Check
+    if 2 <= delta_t <= 8:
+        status["delta_t_status"] = SprayStatus.OPTIMAL
+    elif 0 <= delta_t < 2 or 8 < delta_t <= 10:
+        status["delta_t_status"] = SprayStatus.MARGINAL
+    else:
+        status["delta_t_status"] = SprayStatus.UNSUITABLE
+
+    # Determine overall spray condition
+    if SprayStatus.UNSUITABLE in status.values():
+        spray_condition = SprayStatus.UNSUITABLE
+    elif SprayStatus.MARGINAL in status.values():
+        spray_condition = SprayStatus.MARGINAL
+    else:
+        spray_condition = SprayStatus.OPTIMAL
+
+    return spray_condition, status
 
