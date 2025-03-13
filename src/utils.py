@@ -99,6 +99,12 @@ def number_to_base32_string(num: float) -> str:
     return base32_encoded
 
 
+def load_class(classpath):
+    modulename, classname = classpath.rsplit('.', 1)
+    module = import_module(modulename)
+    return getattr(module, classname)
+
+
 def load_classes(pathname, base_classes):
     classes = []
     for path in glob.glob(pathname, recursive=True):
@@ -145,13 +151,36 @@ async def load_uavs_from_csv(csv_path: str):
 async def evaluate_flight_conditions(uav: UAVModel, weather: dict) -> FlightStatus:
     temp = weather["temp"]
     wind = weather["wind"]
-    precipitation = weather["precipitation"]
+    precipitation_prob = weather["precipitation"]
+    rain = weather["rain"]
 
     if temp < uav.min_operating_temp or temp > uav.max_operating_temp:
         return FlightStatus.NOT_OK
-    if wind > uav.max_wind_speed or precipitation > uav.precipitation_tolerance:
+    if wind > uav.max_wind_speed or rain > uav.precipitation_tolerance:
         return FlightStatus.NOT_OK
-    if wind >= uav.max_wind_speed * 0.8 or precipitation > 0:
+    if wind >= uav.max_wind_speed * 0.8 or rain > 0:
+        return FlightStatus.MARGINALLY_OK
+
+    # Temperature check
+    if temp < uav.min_operating_temp or temp > uav.max_operating_temp:
+        return FlightStatus.NOT_OK
+
+    # Wind speed check
+    if wind > uav.max_wind_speed:
+        return FlightStatus.NOT_OK
+
+    # Precipitation check
+    if rain > uav.precipitation_tolerance:
+        return FlightStatus.NOT_OK
+
+    # Marginal check on wind speed
+    if wind >= uav.max_wind_speed * 0.8:
+        return FlightStatus.MARGINALLY_OK
+
+    # Additional check for high probability of rain and UAVs with 0 mm/h tolerance
+    if precipitation_prob > 0.7 and uav.precipitation_tolerance == 0:
+        return FlightStatus.MARGINALLY_OK
+    if precipitation_prob > 0.7 and uav.precipitation_tolerance * 0.8 <= rain:
         return FlightStatus.MARGINALLY_OK
     
     return FlightStatus.OK

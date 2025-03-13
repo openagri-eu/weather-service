@@ -156,6 +156,7 @@ class OpenWeatherMap():
                 "temp": forecast["main"]["temp"],
                 "wind": forecast["wind"]["speed"],
                 "precipitation": forecast.get("pop", 0),
+                "rain": forecast.get("rain", {}).get("3h", 0.0) / 3 # Convert mm/3h to mm/h
             }
 
             for uav in uavs:
@@ -205,7 +206,8 @@ class OpenWeatherMap():
                 weather_data = {
                     "temp": forecast["main"]["temp"],
                     "wind": forecast["wind"]["speed"],
-                    "precipitation": forecast.get("pop", 0),  # Using Probability of Precipitation (pop)
+                    "precipitation": forecast.get("pop", 0),
+                    "rain": forecast.get("rain", {}).get("3h", 0.0) / 3 # Convert mm/3h to mm/h
                 }
 
                 status = await utils.evaluate_flight_conditions(uav, weather_data)
