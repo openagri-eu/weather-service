@@ -147,7 +147,9 @@ class Application(fastapi.FastAPI):
         async def start_scheduler(app: Application):
             app.state.fc_client = FarmCalendarServiceClient(app)
             await app.state.fc_client.fetch_and_cache_locations()
+            await app.state.fc_client.fetch_uavs()
             await app.state.fc_client.fetch_or_create_thi_activity_type()
+            await app.state.fc_client.fetch_or_create_flight_forecast_activity_type()
 
             scheduler.start_scheduler(app)
 

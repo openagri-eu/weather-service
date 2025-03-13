@@ -28,6 +28,10 @@ class FarmCalendarServiceClient(MicroserviceClient):
 
         self.thi_activity_type = self._get_activity_type_id(act_jsonld)
 
+    # Create Flight Forecast Observation Activity Type
+    async def fetch_or_create_flight_forecast_activity_type(self) -> str:
+        raise NotImplementedError
+
     def _get_activity_type_id(self, jsonld: dict) -> Optional[str]:
         if jsonld['@graph']:
             return jsonld["@graph"][0]["@id"]
@@ -67,6 +71,10 @@ class FarmCalendarServiceClient(MicroserviceClient):
         self.app.state.locations = await self.fetch_locations()
         logging.info(f"Cached {len(self.app.state.locations)} locations.")
 
+    # Fetch UAV models the belong to user and cache them in memory
+    async def fetch_uavs(self):
+        raise NotImplementedError
+
     # Async function to post THI data with JWT authentication
     @backoff.on_exception(backoff.expo, (HTTPException,), max_tries=3)
     async def send_thi(self, lat, lon):
@@ -90,4 +98,9 @@ class FarmCalendarServiceClient(MicroserviceClient):
         }
 
         await self.post('/api/v1/Observations/', json=json_payload)
+
+    # Async function to post Flight Forecast data with JWT authentication
+    @backoff.on_exception(backoff.expo, (HTTPException,), max_tries=3)
+    async def send_flight_forecast(self, lat, lon, uavmodels):
+        raise NotImplementedError
 

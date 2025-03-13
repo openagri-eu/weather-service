@@ -26,12 +26,26 @@ def schedule_tasks(app: FastAPI):
             args=[app, lat, lon]
         )
         logging.debug(f"Scheduled THI task for {lat}, {lon}")
+        scheduler.add_job(
+            post_flight_forecast,
+            "interval",
+            days=5,
+            id=f"flight_forecast_task_{lat}_{lon}",
+            replace_existing=True,
+            args=[app, lat, lon, app.state.uavmodels]
+        )
 
 # Post THI for a single location
 async def post_thi_task(app, lat, lon):
     fc_client = app.state.fc_client
     logging.debug(f"Posting THI for {lat}, {lon}")
     await fc_client.send_thi(lat, lon)
+
+# Post flight forecast for a single location
+async def post_flight_forecast(app, lat, lon, uavmodels):
+    fc_client = app.state.fc_client
+    logging.debug(f"Posting Flight Forecast for models: {uavmodels} at location: ({lat}, {lon})")
+    await fc_client.send_flight_forecast(lat, lon, uavmodels)
 
 
 # Fetch locations & update scheduler every 24 hours
