@@ -9,7 +9,7 @@ import backoff
 from src.core import config
 from src import utils
 from src.services.base import MicroserviceClient
-from src.services.interoperability import ObservationSchema, QuantityValueSchema
+from src.services.interoperability import MadeBySensorSchema, ObservationSchema, QuantityValueSchema
 
 
 logger = logging.getLogger(__name__)
@@ -121,25 +121,24 @@ class FarmCalendarServiceClient(MicroserviceClient):
     @backoff.on_exception(backoff.expo, (HTTPException,), max_tries=3)
     async def send_flight_forecast(self, lat, lon, uavmodels):
 
-        fly_statuses = await self.app.weather_app.get_flight_forecast(lat, lon, uavmodels)
+        fly_statuses = await self.app.weather_app.ensure_forecast_for_uavs_and_location(uavmodels, lat, lon)
 
         for fly_status in fly_statuses:
             phenomenon_time = fly_status.timestamp.isoformat()
             weather_str = f"Weather params: {fly_status.weather_params}"
 
             observation = ObservationSchema(
-                activityType="urn:farmcalendar:FarmActivityType:flight_forecast",
+                activityType=self.ff_activity_type,
                 title=fly_status.uav_model,
                 details=(
                     f"Fligh forecast for {fly_status.uav_model} on "
                     f"lat: {lat}, lon: {lon} at {phenomenon_time}\n\n{weather_str}"
                 ),
                 phenomenonTime=phenomenon_time,
-                madeBySensor={"name": "Sensor"},
+                madeBySensor=MadeBySensorSchema(name=fly_status.uav_model),
                 hasResult=QuantityValueSchema(
                     **{
                         "@id": f"urn:farmcalendar:QuantityValue:{uuid4()}",
-                        "unit": None,
                         "hasValue": fly_status.status
                     }
                 ),

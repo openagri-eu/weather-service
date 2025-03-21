@@ -14,13 +14,13 @@ class MadeBySensorSchema(BaseModel):
 class QuantityValueSchema(BaseModel):
     id: str = Field(..., alias="@id")
     type: str = Field(default="QuantityValue", alias="@type")
-    unit: Optional[str] = None
+    unit: Optional[str] = "null"
     numericValue: Optional[float] = None
     hasValue: Optional[str] = None  # For flight forecast, e.g., "OK"
 
 
 class ObservationSchema(BaseModel):
-    id: Optional[str] = Field(..., alias="@id")
+    id: Optional[str] = Field(default=None, alias="@id")
     type: str = Field(default="Observation", alias="@type")
     activityType: Union[str, dict]
     title: str

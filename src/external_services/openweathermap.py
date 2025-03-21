@@ -4,7 +4,7 @@ from typing import List, Optional
 
 import httpx
 from fastapi import HTTPException
-from beanie.operators import In
+from beanie.operators import In, And
 
 from src.core import config
 from src import utils
@@ -269,7 +269,7 @@ class OpenWeatherMap():
         point = await self.dao.find_or_create_point(lat, lon)
 
         # Fetch all matching UAV models
-        uavs = await UAVModel.find(UAVModel.model.in_(uav_model_names)).to_list()
+        uavs = await UAVModel.find(In(UAVModel.model, uav_model_names)).to_list()
 
         # Map found UAVs for quick lookup
         uav_lookup = {uav.model: uav for uav in uavs}
@@ -284,10 +284,10 @@ class OpenWeatherMap():
         # Check if any model needs forecast data
         models_to_fetch = []
         for model in uav_model_names:
-            existing = await FlyStatus.find(
-                (FlyStatus.uav_model == model) &
-                (FlyStatus.location == point.location) &
-                (FlyStatus.timestamp > now)
+            existing = await FlyStatus.find(And(
+                (FlyStatus.uav_model == model),
+                (FlyStatus.location == point.location),
+                (FlyStatus.timestamp > now))
             ).to_list()
             if not existing:
                 models_to_fetch.append(model)
