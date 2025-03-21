@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from typing import List, Optional
 
@@ -9,12 +9,12 @@ from beanie.operators import In
 from src.core import config
 from src import utils
 from src.core.dao import Dao
+from src.external_services.interoperability import InteroperabilitySchema
 from src.models.point import Point
 from src.models.prediction import Prediction
-from src.interoperability import InteroperabilitySchema
 from src.models.uav import FlyStatus, UAVModel
 from src.models.weather_data import WeatherData
-
+from src.core.exceptions import InvalidWeatherDataError, UAVModelNotFoundError
 from src.schemas.uav import FlightForecastListResponse, FlightStatusForecastResponse
 
 
@@ -62,7 +62,7 @@ class OpenWeatherMap():
             if predictions:
                 return predictions
 
-            point = await self.dao.create_point(lat, lon)
+            point = await self.dao.find_or_create_point(lat, lon)
             url = f'{self.properties["endpointURI"]}/forecast?units=metric&lat={lat}&lon={lon}&appid={config.OPENWEATHERMAP_API_KEY}'
             openweathermap_json = await utils.http_get(url)
             predictions = await self.parseForecast5dayResponse(point, openweathermap_json)
@@ -136,7 +136,7 @@ class OpenWeatherMap():
         if not uavs:
             raise HTTPException(status_code=404, detail="No UAV models found")
 
-        point = await self.dao.create_point(lat, lon)
+        point = await self.dao.find_or_create_point(lat, lon)
 
         # Fetch weather data once (to avoid redundant API calls)
         try:
@@ -193,7 +193,7 @@ class OpenWeatherMap():
             # if predictions:
             #     return predictions
 
-            point = await self.dao.create_point(lat, lon)
+            point = await self.dao.find_or_create_point(lat, lon)
             url = f'{self.properties["endpointURI"]}/forecast?units=metric&lat={lat}&lon={lon}&appid={config.OPENWEATHERMAP_API_KEY}'
             openweathermap_json = await utils.http_get(url)
             forecast5 = openweathermap_json
@@ -250,7 +250,7 @@ class OpenWeatherMap():
             if weather_data:
                 return weather_data
 
-            point = await self.dao.create_point(lat, lon)
+            point = await self.dao.find_or_create_point(lat, lon)
             url = f'{self.properties["endpointURI"]}/weather?units=metric&lat={lat}&lon={lon}&appid={config.OPENWEATHERMAP_API_KEY}'
             openweathermap_json = await utils.http_get(url)
             temp = openweathermap_json["main"]["temp"]
@@ -264,6 +264,75 @@ class OpenWeatherMap():
             raise e
 
         return await self.dao.save_weather_data_for_point(point, data=openweathermap_json, thi=thi)
+
+    async def ensure_forecast_for_uavs_and_location(self, uav_model_names: List[str], lat: float, lon: float) -> List[FlyStatus]:
+        point = await self.dao.find_or_create_point(lat, lon)
+
+        # Fetch all matching UAV models
+        uavs = await UAVModel.find(UAVModel.model.in_(uav_model_names)).to_list()
+
+        # Map found UAVs for quick lookup
+        uav_lookup = {uav.model: uav for uav in uavs}
+        missing_uavs = [model for model in uav_model_names if model not in uav_lookup]
+
+        if missing_uavs:
+            raise UAVModelNotFoundError(f"UAV models not found: {', '.join(missing_uavs)}")
+
+        now = datetime.now(timezone.utc)
+        results = []
+
+        # Check if any model needs forecast data
+        models_to_fetch = []
+        for model in uav_model_names:
+            existing = await FlyStatus.find(
+                (FlyStatus.uav_model == model) &
+                (FlyStatus.location == point.location) &
+                (FlyStatus.timestamp > now)
+            ).to_list()
+            if not existing:
+                models_to_fetch.append(model)
+            else:
+                results.extend(existing)
+
+        # If no models need data, return what we found
+        if not models_to_fetch:
+            return results
+
+        # Fetch forecast from OpenWeatherMap only once
+        url = f'{self.properties["endpointURI"]}/forecast?units=metric&lat={lat}&lon={lon}&appid={config.OPENWEATHERMAP_API_KEY}'
+        openweathermap_json = await utils.http_get(url)
+        forecast5 = openweathermap_json
+
+        if "list" not in forecast5:
+            raise InvalidWeatherDataError()
+
+        for forecast in forecast5["list"]:
+            forecast_time = datetime.strptime(forecast["dt_txt"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+
+            weather_data = {
+                "temp": forecast["main"]["temp"],
+                "wind": forecast["wind"]["speed"],
+                "precipitation": forecast.get("pop", 0),
+                "rain": forecast.get("rain", {}).get("3h", 0.0) / 3
+            }
+
+            # Evaluate for each UAV model
+            for model in models_to_fetch:
+                uav = uav_lookup[model]
+                status = await utils.evaluate_flight_conditions(uav, weather_data)
+
+                flight_data = FlyStatus(
+                    timestamp=forecast_time,
+                    uav_model=model,
+                    status=status.value,
+                    weather_params=weather_data,
+                    weather_source="OpenWeatherMap",
+                    location=point.location.model_dump()
+                )
+                await flight_data.insert()
+                results.append(flight_data)
+
+        return results
 
     # Parses the 5-day forecast data and extracts useful predictions based on the provided schema.
     # For each forecast period, it creates and saves Prediction objects in the database.

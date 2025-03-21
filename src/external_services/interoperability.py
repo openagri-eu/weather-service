@@ -1,6 +1,6 @@
 import logging
-from typing import List
 from collections import defaultdict
+from typing import List
 
 from src import utils
 from src.models.point import Point
@@ -10,7 +10,7 @@ from src.models.weather_data import WeatherData
 
 logger = logging.getLogger(__name__)
 
-# TODO: Re-Implement this class using OCSM
+
 class InteroperabilitySchema:
 
     context_schema = [
@@ -56,7 +56,7 @@ class InteroperabilitySchema:
         '@graph': []
     }
 
-    property_schema = { # TODO add these to data_specifications objects on defaults.json
+    property_schema = {
         'ambient_temperature': {
           'measurement': 'Temperature',
           'unit': 'qudt:DEG_C',
@@ -81,7 +81,6 @@ class InteroperabilitySchema:
 
     @classmethod
     def weather_data_to_jsonld(cls, wdata: WeatherData, point: Point) -> dict:
-        property_schema = cls.property_schema
         semantic_data = utils.deepcopy_dict(cls.schema)
 
         collection_schema = utils.deepcopy_dict(cls.collection_schema)
@@ -145,7 +144,8 @@ class InteroperabilitySchema:
 
                 collection_schema["hasMember"].append(item_schema)
                 semantic_data['@graph'].append(collection_schema)
-        except Exception as e:
+        except Exception as e: # pylint: disable=W0718:broad-exception-caught
             logger.exception(e)
         else:
             return semantic_data
+

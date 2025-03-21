@@ -37,7 +37,7 @@ class Dao():
 
     # Creates a new Point object with the given latitude and longitude.
     # The point is saved to the database and returned.
-    async def create_point(self, lat: float, lon: float) -> Point:
+    async def find_or_create_point(self, lat: float, lon: float) -> Point:
         point = await self.find_point(lat, lon)
         if point:
             return point

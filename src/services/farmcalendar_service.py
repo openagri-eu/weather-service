@@ -1,5 +1,6 @@
 import re
 from typing import Optional, Tuple
+from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 import logging
 
@@ -8,35 +9,46 @@ import backoff
 from src.core import config
 from src import utils
 from src.services.base import MicroserviceClient
+from src.services.interoperability import ObservationSchema, QuantityValueSchema
+
+
+logger = logging.getLogger(__name__)
 
 class FarmCalendarServiceClient(MicroserviceClient):
 
     def __init__(self, app: FastAPI):
         super().__init__(base_url=config.FARM_CALENDAR_URL, service_name="Farm Calendar", app=app)
 
-    # Create THI Observation Activity Type
-    async def fetch_or_create_thi_activity_type(self) -> str:
-        activity_type = 'THI_Observation'
+    async def fetch_or_create_activity_type(self, activity_type: str, description: str) -> str:
         act_jsonld = await self.get(f'/api/v1/FarmCalendarActivityTypes/?name={activity_type}')
 
         if not self._get_activity_type_id(act_jsonld):
             json_payload = {
-                "name": f"{activity_type}",
-                "description": "Activity type collecting observed values for Temperature Humidity Index",
+                "name": activity_type,
+                "description": description,
             }
             act_jsonld = await self.post('/api/v1/FarmCalendarActivityTypes/', json=json_payload)
 
-        self.thi_activity_type = self._get_activity_type_id(act_jsonld)
+        return self._get_activity_type_id(act_jsonld)
+
+    # Create THI Observation Activity Type
+    async def fetch_or_create_thi_activity_type(self) -> str:
+        self.thi_activity_type = await self.fetch_or_create_activity_type(
+            'THI_Observation',
+            'Activity type collecting observed values for Temperature Humidity Index'
+        )
 
     # Create Flight Forecast Observation Activity Type
     async def fetch_or_create_flight_forecast_activity_type(self) -> str:
-        raise NotImplementedError
+        self.ff_activity_type = await self.fetch_or_create_activity_type(
+            'Flight_Forecast_Observation',
+            'Activity type collecting observed values for UAV Flight Forecast'
+        )
 
     def _get_activity_type_id(self, jsonld: dict) -> Optional[str]:
         if jsonld['@graph']:
             return jsonld["@graph"][0]["@id"]
         return
-
 
     # Fetch locations from FARM_CALENDAR_URI
     async def fetch_locations(self):
@@ -65,7 +77,6 @@ class FarmCalendarServiceClient(MicroserviceClient):
             return lat, lon
         return
 
-
     # Fetch locations and cache them in memory
     async def fetch_and_cache_locations(self):
         self.app.state.locations = await self.fetch_locations()
@@ -73,7 +84,14 @@ class FarmCalendarServiceClient(MicroserviceClient):
 
     # Fetch UAV models the belong to user and cache them in memory
     async def fetch_uavs(self):
-        raise NotImplementedError
+        response = await self.get(f'/api/v1/AgriculturalMachines/')
+        uavmodels = [ uav.get("model") for uav in response.get("@graph", []) if uav.get("model", None)]
+        return uavmodels
+
+    # Fetch UAV models and cache the in memory
+    async def fetch_and_cache_uavs(self):
+        self.app.state.uavmodels = await self.fetch_uavs()
+        logging.info(f"Cached {len(self.app.state.uavmodels)} UAV machines.")
 
     # Async function to post THI data with JWT authentication
     @backoff.on_exception(backoff.expo, (HTTPException,), max_tries=3)
@@ -102,5 +120,32 @@ class FarmCalendarServiceClient(MicroserviceClient):
     # Async function to post Flight Forecast data with JWT authentication
     @backoff.on_exception(backoff.expo, (HTTPException,), max_tries=3)
     async def send_flight_forecast(self, lat, lon, uavmodels):
-        raise NotImplementedError
 
+        fly_statuses = await self.app.weather_app.get_flight_forecast(lat, lon, uavmodels)
+
+        for fly_status in fly_statuses:
+            phenomenon_time = fly_status.timestamp.isoformat()
+            weather_str = f"Weather params: {fly_status.weather_params}"
+
+            observation = ObservationSchema(
+                activityType="urn:farmcalendar:FarmActivityType:flight_forecast",
+                title=fly_status.uav_model,
+                details=(
+                    f"Fligh forecast for {fly_status.uav_model} on "
+                    f"lat: {lat}, lon: {lon} at {phenomenon_time}\n\n{weather_str}"
+                ),
+                phenomenonTime=phenomenon_time,
+                madeBySensor={"name": "Sensor"},
+                hasResult=QuantityValueSchema(
+                    **{
+                        "@id": f"urn:farmcalendar:QuantityValue:{uuid4()}",
+                        "unit": None,
+                        "hasValue": fly_status.status
+                    }
+                ),
+                observedProperty="flight_forecast_observation"
+            )
+
+            json_payload = observation.model_dump(by_alias=True, exclude_none=True)
+            logger.debug(json_payload)
+            await self.post('/api/v1/Observations/', json=json_payload)

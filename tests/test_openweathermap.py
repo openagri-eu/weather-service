@@ -60,7 +60,7 @@ class TestOpenWeatherMap:
         )
 
         openweathermap_srv.dao.find_predictions_for_point.return_value = []
-        openweathermap_srv.dao.create_point.return_value = Point(type="station")
+        openweathermap_srv.dao.find_or_create_point.return_value = Point(type="station")
 
         mock_get = AsyncMock(return_value={})
         openweathermap.utils.http_get = mock_get
@@ -133,7 +133,7 @@ class TestOpenWeatherMap:
         )
 
         openweathermap_srv.dao.find_predictions_for_point.return_value = []
-        openweathermap_srv.dao.create_point.return_value = Point(type="station")
+        openweathermap_srv.dao.find_or_create_point.return_value = Point(type="station")
 
         mock_get = AsyncMock(return_value={})
         openweathermap.utils.http_get = mock_get
@@ -154,7 +154,7 @@ class TestOpenWeatherMap:
         self, openweathermap_srv
     ):
         openweathermap_srv.dao.find_predictions_for_point.return_value = []
-        openweathermap_srv.dao.create_point.return_value = Point(type="station")
+        openweathermap_srv.dao.find_or_create_point.return_value = Point(type="station")
 
         error = HTTPError("Http error")
         error.request = type("Request", (object,), dict({"url": "http://test.url"}))
@@ -171,7 +171,7 @@ class TestOpenWeatherMap:
         self, openweathermap_srv
     ):
         openweathermap_srv.dao.find_predictions_for_point.return_value = []
-        openweathermap_srv.dao.create_point.return_value = Point(type="station")
+        openweathermap_srv.dao.find_or_create_point.return_value = Point(type="station")
 
         mock = AsyncMock(side_effect=Exception)
         openweathermap_srv.parseForecast5dayResponse = mock
@@ -278,7 +278,7 @@ class TestOpenWeatherMap:
         )
 
         openweathermap_srv.dao.find_weather_data_for_point.return_value = None
-        openweathermap_srv.dao.create_point.return_value = Point(type="station")
+        openweathermap_srv.dao.find_or_create_point.return_value = Point(type="station")
         openweathermap_srv.dao.save_weather_data_for_point.return_value = new_weather_data
 
         mock_get = AsyncMock(return_value={"main": {"temp": 43.0, "humidity": 0.1}})
@@ -321,7 +321,7 @@ class TestOpenWeatherMap:
         mock_find_one.return_value = mock_uav
         mock_get = AsyncMock(return_value=mock_weather_data)
         openweathermap.utils.http_get = mock_get
-        openweathermap_srv.dao.create_point.return_value = Point(
+        openweathermap_srv.dao.find_or_create_point.return_value = Point(
             type="station", location={"type": "Point", "coordinates": [42.2, 24.24]}
         )
 
@@ -349,7 +349,7 @@ class TestOpenWeatherMap:
         mock_find_one.return_value = mock_uav
         mock_get = AsyncMock(return_value=mock_weather_data)
         openweathermap.utils.http_get = mock_get
-        openweathermap_srv.dao.create_point.return_value = Point(
+        openweathermap_srv.dao.find_or_create_point.return_value = Point(
             type="station", location={"type": "Point", "coordinates": [42.2, 24.24]}
         )
 
@@ -370,7 +370,7 @@ class TestOpenWeatherMap:
         mock_find.return_value.to_list = AsyncMock(return_value=[mock_uav])
         mock_get = AsyncMock(return_value=mock_weather_data)
         openweathermap.utils.http_get = mock_get
-        openweathermap_srv.dao.create_point.return_value = Point(
+        openweathermap_srv.dao.find_or_create_point.return_value = Point(
             type="station", location={"type": "Point", "coordinates": [42.2, 24.24]}
         )
 
