@@ -137,11 +137,46 @@ async def get_flight_forecast_for_all_uavs(
     else:
         return result
 
+# Forecasts suitable UAV flight conditions for all drones
+# Get results in OCSM
+@api_router.get("/api/linkeddata/flight_forecast5")
+async def get_flight_forecast_for_all_uavs_ld(
+    request: Request,
+    lat: float,
+    lon: float,
+    uavmodels: Annotated[list[str] | None, Query()] = None,
+    status_filter: Annotated[list[str] | None, Query()] = None,
+    payload: dict = Depends(authenticate_request),
+):
+    try:
+        result = await request.app.weather_app.get_flight_forecast_for_all_uavs(lat, lon, uavmodels, status_filter, ocsm=True)
+    except Exception as e:
+        logger.exception(e)
+        raise e
+    else:
+        return result
+
+
+# Get flight forecast for a specifiv UAV model
 @api_router.get("/api/data/flight_forecast5/{uavmodel}", response_model=FlightForecastListResponse)
 async def get_flight_forecast_for_uav(request: Request, lat: float, lon: float, uavmodel: str, payload: dict = Depends(authenticate_request),
 ):
     try:
         result = await request.app.weather_app.get_flight_forecast_for_uav(lat, lon, uavmodel)
+    except Exception as e:
+        logger.exception(e)
+        raise e
+    else:
+        return result
+
+
+# Get flight forecast for a specifiv UAV model
+# Get results in OCSM
+@api_router.get("/api/linkeddata/flight_forecast5/{uavmodel}")
+async def get_flight_forecast_for_uav_ld(request: Request, lat: float, lon: float, uavmodel: str, payload: dict = Depends(authenticate_request),
+):
+    try:
+        result = await request.app.weather_app.get_flight_forecast_for_uav(lat, lon, uavmodel, ocsm=True)
     except Exception as e:
         logger.exception(e)
         raise e
