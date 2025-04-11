@@ -15,6 +15,7 @@ import uuid
 
 from fastapi import APIRouter
 import httpx
+from beanie.operators import In
 
 from src.models.spray import SprayStatus
 from src.models.uav import FlightStatus, UAVModel
@@ -125,37 +126,72 @@ def load_classes(pathname, base_classes):
 
 # Reads the CSV file without pandas and inserts data into MongoDB
 async def load_uavs_from_csv(csv_path: str):
-    # Checks if data exists before inserting new records from CSV
-    existing_count = await UAVModel.count()
-    if existing_count > 0:
-        logging.info(f"Skipping CSV import. {existing_count} uavs already exist in the database.")
-        return
-
-    uavs = []
-
+    logger.debug("Loading UAV models from: %s", csv_path)
+    # Read all CSV entries into memory
     # NOTE: It is important CSV file is encoded in UTF-8 without BOM
     # BOM is a series bytes in the beginning to the document which describe the encoding
     # and endian-ness. BOM is added to CSV files created from MS Excel
     # Use another tool or GSheets to create the CSV file
     with open(csv_path, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
-        for row in reader:
-            # Convert data types where needed
-            uav_data = {
-                "model": row["Model"],
-                "manufacturer": row["Manufacturer"],
-                "min_operating_temp": float(row["Min. operating temp"]),
-                "max_operating_temp": float(row["Max. operating temp"]),
-                "max_wind_speed": float(row["Max. wind speed resistance"]),
-                "precipitation_tolerance": float(row["Precipitation tolerance"]),
-            }
-            uavs.append(UAVModel(**uav_data))
+        csv_entries = [row for row in reader]
 
-    if uavs:
-        await UAVModel.insert_many(uavs)
-        logger.info(f"Inserted {len(uavs)} uav records into MongoDB.")
-    else:
-        logger.info("No records found in the CSV file.")
+    # Get all model names from CSV
+    all_model_names = [row["Model"] for row in csv_entries]
+
+    # Fetch existing models from the DB
+    existing_models = await UAVModel.find(In(UAVModel.model, all_model_names)).to_list()
+
+    # Map existing models by model_id for quick lookup
+    existing_map = {uavmodel.model: uavmodel for uavmodel in existing_models}
+
+    inserts = []
+    updates = []
+
+    for row in csv_entries:
+        # Convert data types where needed
+        uav_data = {
+            "model": row["Model"],
+            "manufacturer": row["Manufacturer"],
+            "min_operating_temp": float(row["Min. operating temp"]),
+            "max_operating_temp": float(row["Max. operating temp"]),
+            "max_wind_speed": float(row["Max. wind speed resistance"]),
+            "precipitation_tolerance": float(row["Precipitation tolerance"]),
+        }
+
+        if uav_data["model"] in existing_map:
+            model = existing_map[uav_data["model"]]
+            # Perform update
+            if (
+                model.min_operating_temp != uav_data["min_operating_temp"] or
+                model.max_operating_temp != uav_data["max_operating_temp"] or
+                model.max_wind_speed != uav_data["max_wind_speed"] or
+                model.precipitation_tolerance != uav_data["precipitation_tolerance"]
+            ):
+
+                model.min_operating_temp = uav_data["min_operating_temp"]
+                model.min_operating_temp = uav_data["max_operating_temp"]
+                model.min_operating_temp = uav_data["max_wind_speed"]
+                model.min_operating_temp = uav_data["precipitation_tolerance"]
+                # Prepare model for update
+                updates.append(model)
+        else:
+            new_model = UAVModel(**uav_data)
+            inserts.append(new_model)
+
+    if not(inserts or updates):
+        logger.info("No updates performed to the UAV database")
+
+    # Perform bulk operations
+    if inserts:
+        await UAVModel.insert_many(inserts)
+        logger.info("Inserted %d uav records into MongoDB.", len(inserts))
+
+    for model in updates:
+        await model.save()
+    if updates:
+        logger.info("Updated %d existing models", len(updates))
+
 
 
 def calculate_wet_bulb(t_dry, rh_percent):
@@ -169,7 +205,7 @@ def calculate_wet_bulb(t_dry, rh_percent):
     
     Returns:
     float: Wet bulb temperature in Celsius
-    
+
     Note: This is an approximation valid for RH between 5% and 99% and temperatures between -20°C and 50°C
     """
     t_wet = t_dry * math.atan(0.151977 * math.sqrt(rh_percent + 8.313659)) + \
