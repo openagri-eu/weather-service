@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 
 from fastapi import FastAPI
@@ -22,6 +23,7 @@ def schedule_tasks(app: FastAPI):
                 post_thi_task,
                 "interval",
                 hours=config.INTERVAL_THI_TO_FARMCALENDAR,
+                next_run_time=datetime.now(),
                 id=f"thi_task_{lat}_{lon}",
                 replace_existing=True,
                 args=[app, lat, lon]
@@ -32,6 +34,7 @@ def schedule_tasks(app: FastAPI):
                 post_flight_forecast,
                 "interval",
                 days=5,
+                next_run_time=datetime.now(),
                 id=f"flight_forecast_task_{lat}_{lon}",
                 replace_existing=True,
                 args=[app, lat, lon, app.state.uavmodels]
@@ -42,6 +45,7 @@ def schedule_tasks(app: FastAPI):
                 post_spray_forecast,
                 "interval",
                 days=5,
+                next_run_time=datetime.now(),
                 id=f"spray_forecast_task_{lat}_{lon}",
                 replace_existing=True,
                 args=[app, lat, lon]
