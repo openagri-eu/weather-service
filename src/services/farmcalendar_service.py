@@ -9,6 +9,7 @@ import backoff
 
 from src.core import config
 from src import utils
+from src.core.exceptions import RefreshJWTTokenError
 from src.services.base import MicroserviceClient
 from src.services.interoperability import MadeBySensorSchema, ObservationSchema, QuantityValueSchema
 
@@ -20,6 +21,11 @@ class FarmCalendarServiceClient(MicroserviceClient):
     def __init__(self, app: FastAPI):
         super().__init__(base_url=config.FARM_CALENDAR_URL, service_name="Farm Calendar", app=app)
 
+    @backoff.on_exception(
+        backoff.expo,
+        (HTTPException, RefreshJWTTokenError),
+        max_tries=3
+    )
     async def fetch_or_create_activity_type(self, activity_type: str, description: str) -> str:
         act_jsonld = await self.get(f'/api/v1/FarmCalendarActivityTypes/?name={activity_type}')
 
@@ -58,7 +64,13 @@ class FarmCalendarServiceClient(MicroserviceClient):
             return jsonld["@graph"][0]["@id"]
         return
 
+
     # Fetch locations from FARM_CALENDAR_URI
+    @backoff.on_exception(
+            backoff.expo,
+            (HTTPException,RefreshJWTTokenError),
+            max_tries=3
+            )
     async def fetch_locations(self):
         response = await self.get('/api/v1/FarmParcels/')
 
@@ -91,6 +103,11 @@ class FarmCalendarServiceClient(MicroserviceClient):
         logging.info(f"Cached {len(self.app.state.locations)} locations.")
 
     # Fetch UAV models the belong to user and cache them in memory
+    @backoff.on_exception(
+        backoff.expo,
+        (HTTPException, RefreshJWTTokenError),
+        max_tries=3
+    )
     async def fetch_uavs(self):
         response = await self.get(f'/api/v1/AgriculturalMachines/')
         uavmodels = [ uav.get("model") for uav in response.get("@graph", []) if uav.get("model", None)]
@@ -102,7 +119,11 @@ class FarmCalendarServiceClient(MicroserviceClient):
         logging.info(f"Cached {len(self.app.state.uavmodels)} UAV machines.")
 
     # Async function to post THI data with JWT authentication
-    @backoff.on_exception(backoff.expo, (HTTPException,), max_tries=3)
+    @backoff.on_exception(
+        backoff.expo,
+        (HTTPException, RefreshJWTTokenError),
+        max_tries=3
+    )
     async def send_thi(self, lat, lon):
 
         weather_data = await self.app.weather_app.get_thi(lat, lon)
@@ -125,7 +146,11 @@ class FarmCalendarServiceClient(MicroserviceClient):
         await self.post('/api/v1/Observations/', json=json_payload)
 
     # Async function to post Flight Forecast data with JWT authentication
-    @backoff.on_exception(backoff.expo, (HTTPException,), max_tries=3)
+    @backoff.on_exception(
+        backoff.expo,
+        (HTTPException, RefreshJWTTokenError),
+        max_tries=3
+    )
     async def send_flight_forecast(self, lat, lon, uavmodels):
 
         fly_statuses = await self.app.weather_app.ensure_forecast_for_uavs_and_location(lat, lon, uavmodels, return_existing=False)
@@ -154,7 +179,11 @@ class FarmCalendarServiceClient(MicroserviceClient):
             await self.post('/api/v1/Observations/', json=json_payload)
 
     # Async function to post spray conditions Forecast data with JWT authentication
-    @backoff.on_exception(backoff.expo, (HTTPException,), max_tries=3)
+    @backoff.on_exception(
+        backoff.expo,
+        (HTTPException, RefreshJWTTokenError),
+        max_tries=3
+    )
     async def send_spray_forecast(self, lat, lon):
         spray_forecasts = await self.app.weather_app.ensure_spray_forecast_for_location(lat, lon, return_existing=False)
 
