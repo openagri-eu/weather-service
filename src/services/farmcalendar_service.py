@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 from typing import Optional, Tuple
@@ -24,6 +25,9 @@ class FarmCalendarServiceClient(MicroserviceClient):
     @backoff.on_exception(
         backoff.expo,
         (HTTPException, RefreshJWTTokenError),
+        # The following lambda uses `self.app` instance from `details` argument to run
+        # the `setup_authentication_tokens` method in an async contenxt using the running event loop
+        on_backoff=lambda details: asyncio.create_task(details['args'][0].app.setup_authentication_tokens()),
         max_tries=3
     )
     async def fetch_or_create_activity_type(self, activity_type: str, description: str) -> str:
@@ -67,10 +71,11 @@ class FarmCalendarServiceClient(MicroserviceClient):
 
     # Fetch locations from FARM_CALENDAR_URI
     @backoff.on_exception(
-            backoff.expo,
-            (HTTPException,RefreshJWTTokenError),
-            max_tries=3
-            )
+        backoff.expo,
+        (HTTPException,RefreshJWTTokenError),
+        on_backoff=lambda details: asyncio.create_task(details['args'][0].app.setup_authentication_tokens()),
+        max_tries=3
+    )
     async def fetch_locations(self):
         response = await self.get('/api/v1/FarmParcels/')
 
@@ -106,6 +111,7 @@ class FarmCalendarServiceClient(MicroserviceClient):
     @backoff.on_exception(
         backoff.expo,
         (HTTPException, RefreshJWTTokenError),
+        on_backoff=lambda details: asyncio.create_task(details['args'][0].app.setup_authentication_tokens()),
         max_tries=3
     )
     async def fetch_uavs(self):
@@ -122,6 +128,7 @@ class FarmCalendarServiceClient(MicroserviceClient):
     @backoff.on_exception(
         backoff.expo,
         (HTTPException, RefreshJWTTokenError),
+        on_backoff=lambda details: asyncio.create_task(details['args'][0].app.setup_authentication_tokens()),
         max_tries=3
     )
     async def send_thi(self, lat, lon):
@@ -142,13 +149,13 @@ class FarmCalendarServiceClient(MicroserviceClient):
             },
             "observedProperty": "temperature_humidity_index"
         }
-
         await self.post('/api/v1/Observations/', json=json_payload)
 
     # Async function to post Flight Forecast data with JWT authentication
     @backoff.on_exception(
         backoff.expo,
         (HTTPException, RefreshJWTTokenError),
+        on_backoff=lambda details: asyncio.create_task(details['args'][0].app.setup_authentication_tokens()),
         max_tries=3
     )
     async def send_flight_forecast(self, lat, lon, uavmodels):
@@ -182,6 +189,7 @@ class FarmCalendarServiceClient(MicroserviceClient):
     @backoff.on_exception(
         backoff.expo,
         (HTTPException, RefreshJWTTokenError),
+        on_backoff=lambda details: asyncio.create_task(details['args'][0].app.setup_authentication_tokens()),
         max_tries=3
     )
     async def send_spray_forecast(self, lat, lon):

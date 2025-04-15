@@ -56,7 +56,8 @@ class MicroserviceClient:
 
             # Handle authentication errors
             if response.status_code == 401:
-                await self.app.setup_authentication_tokens()
+                # TODO: Remove unused code
+                # await self.app.setup_authentication_tokens()
                 raise RefreshJWTTokenError(self.service_name)
 
             # Raise exception for other error responses
