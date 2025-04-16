@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from typing import Optional, Tuple
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException
@@ -105,23 +106,27 @@ class FarmCalendarServiceClient(MicroserviceClient):
     @backoff.on_exception(backoff.expo, (HTTPException,), max_tries=3)
     async def send_thi(self, lat, lon):
 
-        weather_data = await self.app.weather_app.get_thi(lat, lon)
-        unix_timestamp = weather_data.data['dt']
+        weather_data = await self.app.weather_app.save_weather_data_thi(lat, lon)
+        # Get current unix timestamp
+        current_timestamp = int(time.time())
         timezone = weather_data.data['timezone']
-
-        json_payload = {
-            "activityType": self.thi_activity_type,
-            "title": f"THI: {str(round(weather_data.thi, 2))}",
-            "details": f"Temperature Humidiy Index on {utils.convert_timestamp_to_string(unix_timestamp, timezone)}",
-            "phenomenonTime": utils.convert_timestamp_to_string(unix_timestamp, timezone, iso=True),
-            "hasResult": {
-                "@id": "urn:farmcalendar:QuantityValue:37b4cbab-1fa1-56c7-b72e-44464d52c21e",
-                "@type": "QuantityValue",
-                "hasValue": str(round(weather_data.thi, 2))
-            },
-            "observedProperty": "temperature_humidity_index"
-        }
-
+        observation = ObservationSchema(
+            activityType=self.thi_activity_type,
+            title=f"THI: {str(round(weather_data.thi, 2))}",
+            details=(
+                f"Temperature Humidiy Index on {utils.convert_timestamp_to_string(current_timestamp, timezone)}"
+            ),
+            phenomenonTime=utils.convert_timestamp_to_string(current_timestamp, timezone, iso=True),
+            hasResult=QuantityValueSchema(
+                **{
+                    "@id": f"urn:farmcalendar:QuantityValue:{uuid4()}",
+                    "hasValue": str(round(weather_data.thi, 2))
+                }
+            ),
+            observedProperty="temperature_humidity_index"
+        )
+        json_payload = observation.model_dump(by_alias=True, exclude_none=True)
+        logger.debug(json_payload)
         await self.post('/api/v1/Observations/', json=json_payload)
 
     # Async function to post Flight Forecast data with JWT authentication

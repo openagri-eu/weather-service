@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import logging
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import httpx
 from fastapi import HTTPException
@@ -17,11 +17,8 @@ from src.models.weather_data import WeatherData
 from src.ocsm.base import FeatureOfInterest, JSONLDGraph
 from src.ocsm.spray import SprayForecastDetailedStatus, SprayForecastObservation, SprayForecastResult
 from src.ocsm.uav import FlightConditionObservation, FlightConditionResult
-from src.schemas.spray import LocationResponse, SprayForecastResponse
 from src.external_services.interoperability import InteroperabilitySchema
 from src.core.exceptions import InvalidWeatherDataError, UAVModelNotFoundError
-from src.schemas.uav import FlightForecastListResponse, FlightStatusForecastResponse
-
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +58,7 @@ class OpenWeatherMap():
        self.dao = dao
 
     # Helper function to get weather predictions from DB or OpenWeatherMap
-    async def get_predictions(self, lat: float, lon: float) -> list[Prediction]:
+    async def get_predictions(self, lat: float, lon: float) -> List[Prediction]:
         try:
             predictions = await self.dao.find_predictions_for_point(lat, lon)
             if predictions:
@@ -84,7 +81,7 @@ class OpenWeatherMap():
     # Checks if the forecast is cached, otherwise fetches it from OpenWeatherMap.
     # If an error occurs, it raises a SourceError for HTTP errors or the original exception.
     # Returns the forecast Predictions.
-    async def get_weather_forecast5days(self, lat: float, lon: float) -> dict:
+    async def get_weather_forecast5days(self, lat: float, lon: float) -> List[Prediction]:
         predictions = await self.get_predictions(lat, lon)
         return predictions
 
@@ -101,27 +98,19 @@ class OpenWeatherMap():
     # Fetches and calculates the Temperature-Humidity Index (THI) for a given latitude and longitude.
     # If the weather data is not cached, it fetches it from OpenWeatherMap and saved in the DB.
     # Raises a SourceError for HTTP errors or the original exception if any other error occurs.
-    # Returns the calculated THI.
-    async def get_thi(self, lat: float, lon: float) -> float:
+    async def get_thi(self, lat: float, lon: float, ocsm=False) -> Union[WeatherData, JSONLDGraph]:
         weather_data = await self.save_weather_data_thi(lat, lon)
-        return weather_data
-
-    # Fetches and calculates the Temperature-Humidity Index (THI) in Linked Data format
-    # for a given latitude and longitude.
-    # If the weather data is not cached, it fetches it from OpenWeatherMap and saved in the DB.
-    # Raises a SourceError for HTTP errors or the original exception if any other error occurs.
-    # Returns the calculated THI in linked-data (JSON-LD) format.
-    async def get_thi_ld(self, lat: float, lon: float) -> dict:
-        weather_data = await self.save_weather_data_thi(lat, lon)
-        point = await self.dao.find_point(lat, lon)
-        jsonld_data = InteroperabilitySchema.weather_data_to_jsonld(weather_data, point)
+        if not ocsm:
+            return weather_data
+        # OCSM schema object
+        jsonld_data = InteroperabilitySchema.weather_data_to_jsonld(weather_data)
         return jsonld_data
 
     # Fetches the current weather data for a given latitude and longitude.
     # If the weather data is not cached, it fetches it from OpenWeatherMap and saved in the DB.
     # Raises a SourceError for HTTP errors or the original exception if any other error occurs.
     # Returns the weather data as a dictionary.
-    async def get_weather(self, lat: float, lon: float) -> dict:
+    async def get_weather(self, lat: float, lon: float) -> WeatherData:
         weather_data = await self.save_weather_data_thi(lat, lon)
         return weather_data
 
@@ -131,7 +120,7 @@ class OpenWeatherMap():
             uavmodels: Optional[List[str]] = None,
             status_filter: Optional[List[str]] = None,
             ocsm=False
-    ) -> dict:
+    ) -> Union[FlyStatus, JSONLDGraph]:
 
         try:
             flystatuses = await self.ensure_forecast_for_uavs_and_location(lat, lon, uav_model_names=uavmodels)
@@ -150,68 +139,20 @@ class OpenWeatherMap():
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 
-
-
         if not ocsm:
-            response = FlightForecastListResponse(forecasts=[
-                FlightStatusForecastResponse(
-                    timestamp=fs.timestamp.isoformat(),
-                    uavmodel=fs.uav_model,
-                    status=fs.status,
-                    weather_source=fs.weather_source,
-                    weather_params=fs.weather_params,
-                    location=fs.location
-                ) for fs in flystatuses])
-            return response
+            return flystatuses
         else:
-            first = flystatuses[0]
-            graph = [
-                        FeatureOfInterest(
-                                    **{
-                                        "@id": utils.generate_urn('Location', obj_id=first.location.id),
-                                        "lon": first.location.coordinates[1],
-                                        "lat": first.location.coordinates[0]
-                                    }
-                                ).model_dump()
-                    ]
-            for fs in flystatuses:
-                graph.append(FlightConditionObservation(
-                    **{
-                                    "@id": utils.generate_urn(FlyStatus.__name__, obj_id=fs.id),
-                                    "description": f"Flight conditions for a {fs.uav_model} drone model on 2025-03-05T18:00:00",
-                                    "hasFeatureOfInterest": utils.generate_urn('Location', obj_id=fs.location.id),
-                                    "madeBySensor": utils.generate_urn(FlyStatus.__name__, 'model', obj_id=fs.uav_model),
-                                    "weatherSource": "openweathermaps",
-                                    "resultTime": fs.timestamp,
-                                    "phenomenonTime": fs.timestamp,
-                                    "hasResult": FlightConditionResult(
-                                        **{
-                                            "@id": utils.generate_urn(FlyStatus.__name__, 'result', obj_id=fs.id),
-                                            "@type": ["Result", "FlightConditionStatus"],
-                                            "status": fs.status,
-                                            "temperature": fs.weather_params["temp"],
-                                            "precipitation": fs.weather_params["precipitation"],
-                                            "windSpeed": fs.weather_params["wind"]
-                                        }
-                                    )
-                                }
-                ).model_dump(exclude_none=True))
-            jsonld = JSONLDGraph(
-                        **{
-                            "@context": [
-                                "https://w3id.org/ocsm/main-context.jsonld",
-                                {
-                                    "qudt": "http://qudt.org/vocab/unit/",
-                                    "cf": "https://vocab.nerc.ac.uk/standard_name/"
-                                }
-                            ],
-                            "@graph": graph
-                        }
-                    )
+            jsonld = InteroperabilitySchema.serialize_flystatus(flystatuses)
             return jsonld
 
 
-    async def get_flight_forecast_for_uav(self, lat: float, lon: float, uavmodel: str, ocsm=False) -> dict:
+    async def get_flight_forecast_for_uav(
+            self,
+            lat: float, lon: float,
+            uavmodel: str,
+            ocsm=False
+    ) -> Union[FlyStatus, JSONLDGraph]:
+
         try:
             flystatuses = await self.ensure_forecast_for_uavs_and_location(lat, lon, [uavmodel])
         except httpx.HTTPError as httpe:
@@ -225,65 +166,13 @@ class OpenWeatherMap():
             raise HTTPException(status_code=500, detail=str(e)) from e
 
         if not ocsm:
-            response = FlightForecastListResponse(forecasts=[
-                FlightStatusForecastResponse(
-                    timestamp=fs.timestamp.isoformat(),
-                    uavmodel=fs.uav_model,
-                    status=fs.status,
-                    weather_source=fs.weather_source,
-                    weather_params=fs.weather_params,
-                    location=fs.location
-                ) for fs in flystatuses])
-            return response
+            return flystatuses
         else:
-            first = flystatuses[0]
-            graph = [
-                        FeatureOfInterest(
-                                    **{
-                                        "@id": utils.generate_urn('Location', obj_id=first.location.id),
-                                        "lon": first.location.coordinates[1],
-                                        "lat": first.location.coordinates[0]
-                                    }
-                                ).model_dump()
-                    ]
-            for fs in flystatuses:
-                graph.append(FlightConditionObservation(
-                    **{
-                                    "@id": utils.generate_urn(FlyStatus.__name__, obj_id=fs.id),
-                                    "description": f"Flight conditions for a {fs.uav_model} drone model on 2025-03-05T18:00:00",
-                                    "hasFeatureOfInterest": utils.generate_urn('Location', obj_id=fs.location.id),
-                                    "madeBySensor": utils.generate_urn(FlyStatus.__name__, 'model', obj_id=fs.uav_model),
-                                    "weatherSource": "openweathermaps",
-                                    "resultTime": fs.timestamp,
-                                    "phenomenonTime": fs.timestamp,
-                                    "hasResult": FlightConditionResult(
-                                        **{
-                                            "@id": utils.generate_urn(FlyStatus.__name__, 'result', obj_id=fs.id),
-                                            "@type": ["Result", "FlightConditionStatus"],
-                                            "status": fs.status,
-                                            "temperature": fs.weather_params["temp"],
-                                            "precipitation": fs.weather_params["precipitation"],
-                                            "windSpeed": fs.weather_params["wind"]
-                                        }
-                                    )
-                                }
-                ).model_dump(exclude_none=True))
-            jsonld = JSONLDGraph(
-                        **{
-                            "@context": [
-                                "https://w3id.org/ocsm/main-context.jsonld",
-                                {
-                                    "qudt": "http://qudt.org/vocab/unit/",
-                                    "cf": "https://vocab.nerc.ac.uk/standard_name/"
-                                }
-                            ],
-                            "@graph": graph
-                        }
-                    )
+            jsonld = InteroperabilitySchema.serialize_flystatus(flystatuses)
             return jsonld
 
     # Fetch weather forecast and calculate suitability of spray conditions for a specific locations
-    async def get_spray_forecast(self, lat: float, lon: float, ocsm=False) -> dict:
+    async def get_spray_forecast(self, lat: float, lon: float, ocsm=False) -> Union[List[SprayForecast], JSONLDGraph]:
         try:
             forecasts = await self.ensure_spray_forecast_for_location(lat, lon)
         except httpx.HTTPError as httpe:
@@ -297,72 +186,10 @@ class OpenWeatherMap():
             raise HTTPException(status_code=500, detail=str(e)) from e
 
         if not ocsm:
-            return [
-                SprayForecastResponse(
-                    timestamp=sf.timestamp,
-                    spray_conditions=sf.spray_conditions,
-                    weather_source=sf.source,
-                    location=LocationResponse(
-                        type=sf.location.type,
-                        coordinates=sf.location.coordinates
-                    ),
-                    detailed_status=sf.detailed_status
-                ) for sf in forecasts
-            ]
+            return forecasts
         else:
-            first = forecasts[0]
-            graph = [
-                FeatureOfInterest(
-                    **{
-                        "@id": utils.generate_urn('Location', obj_id=first.location.id),
-                        "lon": first.location.coordinates[1],
-                        "lat": first.location.coordinates[0]
-                    }
-                ).model_dump()
-            ]
-
-            for sf in forecasts:
-                graph.append(SprayForecastObservation(
-                    **{
-                        "@id": utils.generate_urn(SprayForecast.__name__, obj_id=sf.id),
-                        "description": f"Spray Forecast on {sf.timestamp}",
-                        "hasFeatureOfInterest": utils.generate_urn('Location', obj_id=sf.location.id),
-                        "weatherSource": sf.source,
-                        "resultTime": sf.timestamp,
-                        "phenomenonTime": sf.timestamp,
-                        "hasResult": SprayForecastResult(
-                            **{
-                                "@id": utils.generate_urn(SprayForecast.__name__, 'result', obj_id=sf.id),
-                                "@type": ["Result", "SprayForecastResult"],
-                                "spray_conditions": sf.spray_conditions,
-                            }
-                        ),
-                        "sprayForecastDetailedStatus": SprayForecastDetailedStatus(
-                            **{
-                                "@id": utils.generate_urn(SprayForecast.__name__, 'result', obj_id=sf.id),
-                                "@type": ["sprayForecastDetailedStatus"],
-                                "temperatureStatus": sf.detailed_status["temperature_status"],
-                                "windStatus": sf.detailed_status["wind_status"],
-                                "precipitationStatus": sf.detailed_status["precipitation_status"],
-                                "humidityStatus": sf.detailed_status["humidity_status"],
-                                "deltaTStatus": sf.detailed_status["delta_t_status"],
-                            }
-                        )
-                    }
-                ).model_dump(exclude_none=True))
-
-            return JSONLDGraph(
-                **{
-                    "@context": [
-                        "https://w3id.org/ocsm/main-context.jsonld",
-                        {
-                            "qudt": "http://qudt.org/vocab/unit/",
-                            "cf": "https://vocab.nerc.ac.uk/standard_name/"
-                        }
-                    ],
-                    "@graph": graph
-                }
-            )
+            jsonld = InteroperabilitySchema.serialize_spray_forecasts(forecasts)
+            return jsonld
 
 
     # Asynchronously fetches weather data from the OpenWeatherMap API for a given latitude and longitude.
@@ -534,7 +361,7 @@ class OpenWeatherMap():
     # For each forecast period, it creates and saves Prediction objects in the database.
     # Logs any errors that occur during the transformation process.
     # Returns a list of predictions.
-    async def parseForecast5dayResponse(self, point: Point, data: dict) -> list:
+    async def parseForecast5dayResponse(self, point: Point, data: dict) -> List[Prediction]:
         # Extract data to a list of Predictions
         extracted_data = []
         predictions = []

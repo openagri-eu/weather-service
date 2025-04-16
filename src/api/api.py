@@ -1,13 +1,14 @@
 import logging
-from typing import Annotated, List, Optional
+from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
 
 from src.api.deps import authenticate_request
 
+from src.ocsm.base import JSONLDGraph
 from src.schemas.prediction import PredictionOut
 from src.schemas.spray import SprayForecastResponse
-from src.schemas.uav import FlightForecastListResponse
+from src.schemas.uav import FlightStatusForecastResponse
 from src.schemas.weather_data import THIDataOut, WeatherDataOut
 
 
@@ -19,7 +20,7 @@ api_router = APIRouter()
 # Fetches the 5-day weather forecast for a given latitude and longitude.
 # If an error occurs, a 500 HTTP exception is raised.
 # Returns the forecast data if successful.
-@api_router.get("/api/data/forecast5", response_model=list[PredictionOut])
+@api_router.get("/api/data/forecast5", response_model=List[PredictionOut])
 async def get_weather_forecast5days(
     request: Request,
     lat: float,
@@ -103,7 +104,7 @@ async def get_thi(
 # Calculates the current Temperature-Humidity Index (THI) for a given latitude and longitude.
 # If an error occurs, a 500 HTTP exception is raised.
 # Returns the THI data if successful.
-@api_router.get("/api/linkeddata/thi")
+@api_router.get("/api/linkeddata/thi", response_model=JSONLDGraph)
 async def get_thi_ld(
     request: Request,
     lat: float,
@@ -111,7 +112,7 @@ async def get_thi_ld(
     payload: dict = Depends(authenticate_request),
 ):
     try:
-        result = await request.app.weather_app.get_thi_ld(lat, lon)
+        result = await request.app.weather_app.get_thi(lat, lon, ocsm=True)
     except Exception as e:
         logger.exception(e)
         raise HTTPException(status_code=500)
@@ -120,7 +121,7 @@ async def get_thi_ld(
 
 
 # Forecasts suitable UAV flight conditions for all drones
-@api_router.get("/api/data/flight_forecast5", response_model=FlightForecastListResponse)
+@api_router.get("/api/data/flight_forecast5", response_model=List[FlightStatusForecastResponse])
 async def get_flight_forecast_for_all_uavs(
     request: Request,
     lat: float,
@@ -158,7 +159,7 @@ async def get_flight_forecast_for_all_uavs_ld(
 
 
 # Get flight forecast for a specifiv UAV model
-@api_router.get("/api/data/flight_forecast5/{uavmodel}", response_model=FlightForecastListResponse)
+@api_router.get("/api/data/flight_forecast5/{uavmodel}", response_model=List[FlightStatusForecastResponse])
 async def get_flight_forecast_for_uav(request: Request, lat: float, lon: float, uavmodel: str, payload: dict = Depends(authenticate_request),
 ):
     try:

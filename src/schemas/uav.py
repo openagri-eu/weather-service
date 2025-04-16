@@ -1,15 +1,16 @@
-from pydantic import BaseModel
 from datetime import datetime
 from typing import Dict, List
 
-from src.models.point import GeoJSON
+from pydantic import BaseModel
+
+from src.schemas.point import GeoJSONOut
 
 class FlightStatusForecastResponse(BaseModel):
     timestamp: datetime
-    uavmodel: str
+    uav_model: str
     status: str
     weather_source: str
-    location: GeoJSON
+    location: GeoJSONOut
     weather_params: Dict[str, float]
 
 class FlightForecastListResponse(BaseModel):

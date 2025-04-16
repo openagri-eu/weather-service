@@ -1,8 +1,6 @@
-from typing import Optional
-from uuid import UUID
 from pydantic import BaseModel
 
-from src.models.point import GeoJSONTypeEnum, PointTypeEnum
+from src.models.point import GeoJSONTypeEnum
 
 
 class GeoJSONOut(BaseModel):
@@ -11,7 +9,4 @@ class GeoJSONOut(BaseModel):
 
 
 class PointOut(BaseModel):
-    id: UUID
-    title: Optional[str]
-    type: PointTypeEnum
     location: GeoJSONOut
