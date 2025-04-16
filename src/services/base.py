@@ -3,6 +3,8 @@ from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException
 
+from src.core.exceptions import RefreshJWTTokenError
+
 
 class MicroserviceClient:
     def __init__(
@@ -16,7 +18,7 @@ class MicroserviceClient:
 
     def _get_auth_header(self) -> Dict[str, str]:
         # Get token from app.state
-        token = self.app.state.jwt_token
+        token = self.app.state.access_token
 
         if not token:
             raise HTTPException(
@@ -54,10 +56,9 @@ class MicroserviceClient:
 
             # Handle authentication errors
             if response.status_code == 401:
-                raise HTTPException(
-                    status_code=401,
-                    detail=f"Authentication failed for {self.service_name} service. JWT token may be expired.",
-                )
+                # TODO: Remove unused code
+                # await self.app.setup_authentication_tokens()
+                raise RefreshJWTTokenError(self.service_name)
 
             # Raise exception for other error responses
             response.raise_for_status()

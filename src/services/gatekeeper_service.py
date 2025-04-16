@@ -12,7 +12,7 @@ class GatekeeperServiceClient(MicroserviceClient):
 
     # Login to gatekeeper using credentials from config file
     @staticmethod
-    async def gk_login() -> str:
+    async def gk_get_jwt_token() -> str:
         login_credentials = {
             'username': config.WEATHER_SRV_GATEKEEPER_USER,
             'password': config.WEATHER_SRV_GATEKEEPER_PASSWORD

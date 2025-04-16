@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from beanie.odm.operators.find.logical import And
 
+from src.core import config
 from src.models.point import Point, GeoJSON, PointTypeEnum, GeoJSONTypeEnum
 from src.models.prediction import Prediction
 from src.models.weather_data import WeatherData
@@ -67,7 +68,7 @@ class Dao():
             return None
 
         logger.debug("Location was cached")
-        three_hours_ago = datetime.utcnow() - timedelta(hours=3)
+        three_hours_ago = datetime.utcnow() - timedelta(hours=config.CURRENT_WEATHER_DATA_CACHE_TIME)
         return await WeatherData.find_one(WeatherData.spatial_entity == point, WeatherData.created_at >= three_hours_ago)
 
     # Saves the given weather data for a specific point.

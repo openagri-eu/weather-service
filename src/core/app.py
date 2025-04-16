@@ -10,6 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie, Document
 
 from src.core import config
+from src.core.security import create_gk_jwt_tokens
 from src import utils
 from src.core.dao import Dao
 from src.api.api import api_router
@@ -65,16 +66,15 @@ class Application(fastapi.FastAPI):
         async def register_routes(app: Application):
             logger.debug("Registering routes to Gatekeeper")
 
-            token, refresh = await GatekeeperServiceClient.gk_login()
-            app.state.jwt_token = token
+            await app.setup_authentication_tokens()
             gk_client = GatekeeperServiceClient(app)
-            logging.debug(f"Obtained JWT token from gatekeeper: {token}")
+            logging.debug("Obtained JWT token from gatekeeper: %s", app.state.access_token)
 
             service_directory = await gk_client.gk_service_directory()
-            logging.debug(f"Fetched service directory: {service_directory}")
+            logging.debug("Fetched service directory: %s", service_directory)
 
             app_routes = utils.list_routes_from_routers([api_router])
-            logging.debug(f"App routes: {app_routes}")
+            logging.debug("App routes: %s", app_routes)
 
             existing_endpoints = {entry["endpoint"]: entry for entry in service_directory}
             for route in app_routes:
@@ -85,12 +85,11 @@ class Application(fastapi.FastAPI):
                         "service_name": "weather_data",
                         "endpoint": relative_path,
                         "methods": route["methods"],
-                        # "params": "lat{float}&lon{float}",
                     }
                     response = await gk_client.gk_service_register(service_data)
-                    logging.info(f"Registered new service: {response}")
+                    logging.info("Registered new service: %s", response)
 
-            await gk_client.gk_logout(refresh)
+            await gk_client.gk_logout(app.state.refresh_token)
 
 
         self.add_event_handler(event_type="startup", func=partial(add_router, app=self))
@@ -111,12 +110,12 @@ class Application(fastapi.FastAPI):
     def setup_uavs(self):
         logger.debug("Setup connection with external weather service")
 
-        async def load_uavs_from_csv(app: Application):
+        async def load_uavs_from_csv():
             csv_path = '/data/drone_registrations.csv'
             if os.path.isfile(csv_path):
                 await utils.load_uavs_from_csv(csv_path)
 
-        self.add_event_handler(event_type="startup", func=partial(load_uavs_from_csv, app=self))
+        self.add_event_handler(event_type="startup", func=partial(load_uavs_from_csv))
         return OpenWeatherMap()
 
     def setup_openapi(self):
@@ -155,3 +154,6 @@ class Application(fastapi.FastAPI):
 
         self.add_event_handler(event_type="startup", func=partial(start_scheduler, app=self))
         return
+
+    async def setup_authentication_tokens(self):
+        self.state.access_token, self.state.refresh_token = await create_gk_jwt_tokens()
