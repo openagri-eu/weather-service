@@ -5,8 +5,42 @@ from fastapi import FastAPI
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from src.core import config
+from src.core.app import Application
 
 scheduler = AsyncIOScheduler()
+
+class JobManager:
+    def __init__(self, scheduler: AsyncIOScheduler, app: Application):
+        self.scheduler = scheduler
+        self.dynamic_job_ids = set()
+
+    def schedule_farm_job(self, farm, parcels, machines, job_fn):
+        job_id = f"forecast_job_{farm['@id'].split(':')[-1]}"
+        self.scheduler.add_job(
+            job_fn,
+            trigger="interval",
+            hours=3,
+            id=job_id,
+            args=[farm, parcels, machines]
+        )
+        self.dynamic_job_ids.add(job_id)
+        logging.info(f"Scheduled forecast job for {farm['name']} as {job_id}")
+
+    def remove_all_dynamic_jobs(self):
+        logging.info("Removing all dynamic forecast jobs...")
+        for job_id in self.dynamic_job_ids:
+            self.scheduler.remove_job(job_id)
+            logging.info(f"Removed job {job_id}")
+        self.dynamic_job_ids.clear()
+
+    def reschedule_all_farm_jobs(self, farms, get_parcels, get_machines, job_fn):
+        self.remove_all_dynamic_jobs()
+        logging.info("Rescheduling farm forecast jobs...")
+        for farm in farms:
+            parcels = get_parcels(farm["@id"])
+            machines = get_machines(farm["@id"])
+            self.schedule_farm_job(farm, parcels, machines, job_fn)
+
 
 
 # Schedule THI tasks for each location
@@ -81,17 +115,3 @@ async def refresh_locations_and_schedule(app):
 async def refresh_machines_and_schedule(app):
     await app.state.fc_client.fetch_and_cache_uavs()
     schedule_tasks(app)
-
-
-
-def start_scheduler(app: FastAPI):
-
-    schedule_tasks(app)
-
-    # Refresh locations and reschedule every 24 hours
-    scheduler.add_job(refresh_locations_and_schedule, "interval", hours=24, args=[app])
-    # Refresh machines and reschedule every 24 hours
-    scheduler.add_job(refresh_machines_and_schedule, "interval", hours=24, args=[app])
-
-
-    scheduler.start()

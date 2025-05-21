@@ -8,8 +8,10 @@ from importlib import import_module
 import inspect
 import logging
 import os
+import re
 import struct
 import copy
+from typing import Optional, Tuple
 import uuid
 
 
@@ -322,4 +324,26 @@ def evaluate_spray_conditions(temp, wind, precipitation, humidity, delta_t):
         spray_condition = SprayStatus.OPTIMAL
 
     return spray_condition, status
+
+
+# Extract location coordinates from parcel
+def extract_coordinates_from_parcel(parcel: dict):
+    lat = parcel.get("location", {}).get("lat")
+    lon = parcel.get("location", {}).get("long")
+    if lat is not None and lon is not None:
+        return (lat, lon)
+    else:
+        # Fallback: Extract first lat, lon from WKT polygon
+        wkt = parcel.get("hasGeometry", {}).get("asWKT", "")
+        coords = parse_wkt(wkt)
+        if coords:
+            return coords
+
+# Extract first coordinate pair (lat, lon) from WKT POLYGON
+def parse_wkt(wkt: str) -> Optional[Tuple[float, float]]:
+    match = re.search(r"POLYGON\(\(\s*([\d\.\-]+) ([\d\.\-]+)", wkt)
+    if match:
+        lon, lat = float(match.group(1)), float(match.group(2))
+        return lat, lon
+    return
 

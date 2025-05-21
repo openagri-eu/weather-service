@@ -13,12 +13,13 @@ from src.core import config
 from src.core.security import create_gk_jwt_tokens
 from src import utils
 from src.core.dao import Dao
+from src.core.jobs import run_forecast_for_farm
 from src.api.api import api_router
 from src.api.auth import auth_router
 from src.external_services.openweathermap import OpenWeatherMap
 from src.services.gatekeeper_service import GatekeeperServiceClient
 from src.services.farmcalendar_service import FarmCalendarServiceClient
-import src.scheduler as scheduler
+from src.scheduler import scheduler, JobManager
 
 
 logger = logging.getLogger(__name__)
@@ -143,17 +144,35 @@ class Application(fastapi.FastAPI):
     def setup_fc_jobs(self):
 
         async def start_scheduler(app: Application):
-            app.state.fc_client = FarmCalendarServiceClient(app)
-            await app.state.fc_client.fetch_and_cache_locations()
-            await app.state.fc_client.fetch_and_cache_uavs()
-            await app.state.fc_client.fetch_or_create_thi_activity_type()
-            await app.state.fc_client.fetch_or_create_flight_forecast_activity_type()
-            await app.state.fc_client.fetch_or_create_spray_forecast_activity_type()
+            job_manager = JobManager(scheduler, app)
+            fc_client = FarmCalendarServiceClient(app)
+            logger.debug("Scheduler started!")
 
-            scheduler.start_scheduler(app)
+            # Initial farm/parcel/machine sync
+            app.resync_all_jobs(fc_client, job_manager)
+
+            # Schedule nightly re-sync (every day at 03:00)
+            scheduler.add_job(
+                app.resync_all_jobs,
+                trigger="cron",
+                hour=3,
+                id="daily_job_resync",
+                args=[fc_client, job_manager]
+            )
 
         self.add_event_handler(event_type="startup", func=partial(start_scheduler, app=self))
         return
+
+    async def resync_farm_jobs(self, fc_client: FarmCalendarServiceClient, jm: JobManager):
+        logger.debug("🔄 Resyncing farm forecast jobs...")
+        farms = await fc_client.get_farms()
+        jm.reschedule_all_farm_jobs(
+            farms=farms,
+            get_parcels=lambda farm_id: fc_client.get_parcels_for_farm,
+            get_machines=lambda farm_id: fc_client.get_machines_for_farm,
+            job_fn=run_forecast_for_farm
+        )
+
 
     async def setup_authentication_tokens(self):
         self.state.access_token, self.state.refresh_token = await create_gk_jwt_tokens()

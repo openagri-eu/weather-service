@@ -2,7 +2,7 @@ import asyncio
 import json
 import re
 import time
-from typing import Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 import logging
@@ -22,6 +22,49 @@ class FarmCalendarServiceClient(MicroserviceClient):
 
     def __init__(self, app: FastAPI):
         super().__init__(base_url=config.FARM_CALENDAR_URL, service_name="Farm Calendar", app=app)
+        self.thi_activity_type = self.fetch_or_create_thi_activity_type()
+
+    async def get_farms(self):
+            resp = await self.get("/Farm/")
+            return resp.json().get("@graph", [])
+
+    async def get_parcels_for_farm(self, farm_id: str) -> List[Dict]:
+        response = await self.get("/FarmParcels/")
+        response.raise_for_status()
+        all_parcels = response.json().get("@graph", [])
+        return [p for p in all_parcels if p.get("farm", {}).get("@id") == farm_id]
+
+    async def get_machines_for_farm(self, farm_id: str) -> List[Dict]:
+        response = await self.get("/AgriculturalMachines/")
+        response.raise_for_status()
+        all_machines = response.json().get("@graph", [])
+        # Filter by farm parcel matching any farm parcel ID
+        # FARMCALENDAR BUG: We get only the uuid part of the id
+        # because FARMCALENDAR differs
+        # FarmParcel id to `urn:farmcalendar:FarmParcel:00000000-0000-0000-0000-000000000001`
+        # from
+        # AgriculturalMachines hasAgriParcel.id to `urn:farmcalendar:Parcel:00000000-0000-0000-0000-000000000001`
+        farm_parcel_ids = {
+            p["@id"].split(":")[-1] for p in await self.get_parcels_for_farm(farm_id)
+        }
+        return [
+            m for m in all_machines
+            if m.get("hasAgriParcel", {}).get("@id").split(":")[-1] in farm_parcel_ids
+        ]
+
+    async def post_observation(self, observation: dict):
+            # Change endpoint if needed
+            resp = await self.post("/Observations/", json=observation)
+            resp.raise_for_status()
+            # Return ID if needed to track for deletion
+            return resp.json().get("@id")
+
+    async def delete_observation(self, observation_id: str) -> None:
+        obs_uuid = observation_id.split(":")[-1]
+        response = await self.delete(f"/Observations/{obs_uuid}/")
+        response.raise_for_status()
+        return response.status
+
 
     @backoff.on_exception(
         backoff.expo,
@@ -40,6 +83,8 @@ class FarmCalendarServiceClient(MicroserviceClient):
                 "description": description,
             }
             act_jsonld = await self.post('/api/v1/FarmCalendarActivityTypes/', json=json_payload)
+            if act_jsonld['@graph']:
+                return act_jsonld["@graph"][0]["@id"]
 
         return self._get_activity_type_id(act_jsonld)
 
@@ -70,38 +115,7 @@ class FarmCalendarServiceClient(MicroserviceClient):
         return
 
 
-    # Fetch locations from FARM_CALENDAR_URI
-    @backoff.on_exception(
-        backoff.expo,
-        (HTTPException,RefreshJWTTokenError),
-        on_backoff=lambda details: asyncio.create_task(details['args'][0].app.setup_authentication_tokens()),
-        max_tries=3
-    )
-    async def fetch_locations(self):
-        response = await self.get('/api/v1/FarmParcels/')
 
-        locations = []
-        for parcel in response.get("@graph", []):
-            lat = parcel.get("location", {}).get("lat")
-            lon = parcel.get("location", {}).get("long")
-            if lat is not None and lon is not None:
-                locations.append((lat, lon))
-            else:
-                # Fallback: Extract first lat, lon from WKT polygon
-                wkt = parcel.get("hasGeometry", {}).get("asWKT", "")
-                coords = self._parse_wkt(wkt)
-                if coords:
-                    locations.append(coords)
-
-        return locations
-
-    # Extract first coordinate pair (lat, lon) from WKT POLYGON
-    def _parse_wkt(self, wkt: str) -> Optional[Tuple[float, float]]:
-        match = re.search(r"POLYGON\(\(\s*([\d\.\-]+) ([\d\.\-]+)", wkt)
-        if match:
-            lon, lat = float(match.group(1)), float(match.group(2))
-            return lat, lon
-        return
 
     # Fetch locations and cache them in memory
     async def fetch_and_cache_locations(self):
